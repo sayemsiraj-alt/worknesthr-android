@@ -1,0 +1,304 @@
+{
+  "entities": {
+    "Company": {
+      "title": "Company",
+      "description": "Multi-tenant company workspace and subscription details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "slug": { "type": "string", "maxLength": 64 },
+        "ownerEmail": { "type": "string", "maxLength": 256 },
+        "ownerName": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "enum": ["active", "suspended", "inactive"] },
+        "subscription": { "type": "object" },
+        "profile": { "type": "object" },
+        "settings": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerEmail", "status"]
+    },
+    "AdminAccount": {
+      "title": "AdminAccount",
+      "description": "Administrator account with company tenancy and permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "email": { "type": "string", "maxLength": 256 },
+        "role": { "type": "string", "maxLength": 64 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 256 },
+        "isTenantOwner": { "type": "boolean" },
+        "isSuperAdmin": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "permissions": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Staff member profile scoped to tenant company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 256 },
+        "email": { "type": "string", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "department": { "type": "string", "maxLength": 128 },
+        "designation": { "type": "string", "maxLength": 128 },
+        "shift": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["active", "inactive", "on_leave"] }
+      },
+      "required": ["id", "name"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Organizational department scoped to tenant company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 64 },
+        "head": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["id", "name"]
+    },
+    "Branch": {
+      "title": "Branch",
+      "description": "Company Head Office or Branch Office location with biometric terminals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "enum": ["head_office", "branch", "factory", "warehouse"] },
+        "city": { "type": "string", "maxLength": 128 },
+        "address": { "type": "string", "maxLength": 256 },
+        "managerName": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["id", "name"]
+    },
+    "Shift": {
+      "title": "Shift",
+      "description": "Work schedule shift definition scoped to tenant company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "startTime": { "type": "string", "maxLength": 16 },
+        "endTime": { "type": "string", "maxLength": 16 },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["id", "name"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Daily employee attendance record scoped to tenant company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 64 },
+        "employeeName": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 32 },
+        "checkIn": { "type": "string", "maxLength": 32 },
+        "checkOut": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id", "employeeId", "date"]
+    },
+    "Punch": {
+      "title": "Punch",
+      "description": "Raw biometric timestamp punch scoped to tenant company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string", "maxLength": 32 },
+        "time": { "type": "string", "maxLength": 32 },
+        "deviceSerialNumber": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "employeeId"]
+    },
+    "SubscriptionInvoice": {
+      "title": "SubscriptionInvoice",
+      "description": "Tenant-scoped BDT subscription invoice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "invoiceNumber": { "type": "string", "maxLength": 64 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 256 },
+        "ownerEmail": { "type": "string", "maxLength": 256 },
+        "plan": { "type": "string", "enum": ["starter", "professional", "enterprise", "custom"] },
+        "billingCycle": { "type": "string", "enum": ["monthly", "yearly"] },
+        "periodStart": { "type": "string", "maxLength": 32 },
+        "periodEnd": { "type": "string", "maxLength": 32 },
+        "currency": { "type": "string", "enum": ["BDT"] },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "dueAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["unpaid", "partially_paid", "paid", "void"] },
+        "issueDate": { "type": "string", "maxLength": 32 },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "renewalApplied": { "type": "boolean" }
+      },
+      "required": ["id", "invoiceNumber", "companyId", "plan", "billingCycle", "currency", "totalAmount", "status"]
+    },
+    "SubscriptionPayment": {
+      "title": "SubscriptionPayment",
+      "description": "Tenant-scoped manual BDT payment submission and verification record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "invoiceId": { "type": "string", "maxLength": 128 },
+        "invoiceNumber": { "type": "string", "maxLength": 64 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 256 },
+        "method": { "type": "string", "enum": ["bkash", "nagad", "bank_transfer", "cash"] },
+        "currency": { "type": "string", "enum": ["BDT"] },
+        "requestedAmount": { "type": "number" },
+        "approvedAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "partially_approved", "rejected"] },
+        "paymentDate": { "type": "string", "maxLength": 32 },
+        "transactionReference": { "type": "string", "maxLength": 128 },
+        "normalizedReferenceKey": { "type": "string", "maxLength": 128 },
+        "renewalApplied": { "type": "boolean" }
+      },
+      "required": ["id", "invoiceId", "companyId", "method", "currency", "requestedAmount", "status", "transactionReference"]
+    },
+    "BillingAuditLog": {
+      "title": "BillingAuditLog",
+      "description": "Immutable audit log for manual billing and subscription renewal events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 256 },
+        "action": { "type": "string", "maxLength": 64 },
+        "actorEmail": { "type": "string", "maxLength": 256 },
+        "summary": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "companyId", "action", "actorEmail", "summary"]
+    },
+    "WorkflowRequest": {
+      "title": "WorkflowRequest",
+      "description": "Reusable approval workflow request for leave, attendance regularization, overtime, expense, and HR requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "requestType": { "type": "string", "maxLength": 64 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "employeeName": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "reason": { "type": "string", "maxLength": 2048 },
+        "companyId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "requestType", "employeeId", "status", "companyId"]
+    },
+    "HRDocument": {
+      "title": "HRDocument",
+      "description": "Permission-controlled HR document or company policy with expiry tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["company_policy", "employee_private"] },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "expiryDate": { "type": "string", "maxLength": 64 },
+        "companyId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "title", "category", "visibility", "companyId"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable enterprise audit log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "maxLength": 64 },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 256 },
+        "actorRole": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "companyId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "action", "category", "actorId", "timestamp", "companyId"]
+    }
+  },
+  "firestore": {
+    "/companies/{companyId}": {
+      "schema": "Company",
+      "description": "Tenants and subscription accounts"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminAccount",
+      "description": "Administrators and tenant user accounts"
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Employee records scoped by companyId"
+    },
+    "/departments/{departmentId}": {
+      "schema": "Department",
+      "description": "Departments scoped by companyId"
+    },
+    "/branches/{branchId}": {
+      "schema": "Branch",
+      "description": "Head office and branch offices scoped by companyId"
+    },
+    "/shifts/{shiftId}": {
+      "schema": "Shift",
+      "description": "Work shifts scoped by companyId"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "AttendanceRecord",
+      "description": "Daily attendance summaries scoped by companyId"
+    },
+    "/punches/{punchId}": {
+      "schema": "Punch",
+      "description": "Biometric punches scoped by companyId"
+    },
+    "/subscription_invoices/{invoiceId}": {
+      "schema": "SubscriptionInvoice",
+      "description": "BDT subscription invoices scoped by companyId"
+    },
+    "/subscription_payments/{paymentId}": {
+      "schema": "SubscriptionPayment",
+      "description": "Manual BDT subscription payments scoped by companyId"
+    },
+    "/subscription_audit_logs/{logId}": {
+      "schema": "BillingAuditLog",
+      "description": "Billing and renewal audit history scoped by companyId"
+    },
+    "/workflow_requests/{requestId}": {
+      "schema": "WorkflowRequest",
+      "description": "Reusable approval workflow requests scoped by companyId"
+    },
+    "/hr_documents/{docId}": {
+      "schema": "HRDocument",
+      "description": "Permission-controlled HR documents and company policies scoped by companyId"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Enterprise security and operational audit logs scoped by companyId"
+    }
+  }
+}

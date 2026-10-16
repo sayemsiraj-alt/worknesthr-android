@@ -1,0 +1,1017 @@
+import { useState, useMemo } from 'react';
+import { useData, Branch } from '../context/DataContext';
+import { Page } from '../App';
+import { BiometricDeviceModal } from './BiometricDeviceModal';
+import {
+  IconBuilding,
+  IconServer,
+  IconUsers,
+  IconFingerprint,
+  IconPlus,
+  IconEdit,
+  IconTrash,
+  IconCheck,
+  IconCloud,
+  IconActivity,
+} from './Icons';
+
+type Props = {
+  onNavigate?: (page: Page) => void;
+};
+
+const QUICK_BRANCH_PRESETS: Array<{
+  name: string;
+  code: string;
+  city: string;
+  address: string;
+  type: Branch['type'];
+}> = [
+  { name: 'Chattogram Branch', code: 'BR-CTG', city: 'Chattogram', address: 'Agrabad Commercial Area, Chattogram', type: 'branch' },
+  { name: 'Uttara Branch (Dhaka)', code: 'BR-UTT', city: 'Dhaka', address: 'Sector 7, Uttara, Dhaka', type: 'branch' },
+  { name: 'Sylhet Branch', code: 'BR-SYL', city: 'Sylhet', address: 'Zindabazar, Sylhet', type: 'branch' },
+  { name: 'Gazipur Factory Branch', code: 'BR-GZP', city: 'Gazipur', address: 'Tongi Industrial Area, Gazipur', type: 'factory' },
+  { name: 'Khulna Branch', code: 'BR-KHL', city: 'Khulna', address: 'KDA Avenue, Khulna', type: 'branch' },
+  { name: 'Rajshahi Branch', code: 'BR-RAJ', city: 'Rajshahi', address: 'Shaheb Bazar, Rajshahi', type: 'branch' },
+];
+
+export function BranchManagement({ onNavigate }: Props) {
+  const {
+    branches,
+    activeBranch,
+    setActiveBranch,
+    addBranch,
+    updateBranch,
+    deleteBranch,
+    allEmployees,
+    allDevices,
+    getEmployeeBranch,
+    getDeviceBranch,
+    addNotification,
+  } = useData();
+
+  const [showBranchModal, setShowBranchModal] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
+  const [deleteWarningStep, setDeleteWarningStep] = useState<1 | 2>(1);
+  const [isDeletingBranch, setIsDeletingBranch] = useState(false);
+  const [search, setSearch] = useState('');
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
+  const [preselectedBranchForDevice, setPreselectedBranchForDevice] = useState<string>('');
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
+  const isAllBranchesSelected = !activeBranch || activeBranch.trim().toLowerCase() === 'all';
+
+  const [formData, setFormData] = useState<{
+    name: string;
+    code: string;
+    type: Branch['type'];
+    city: string;
+    address: string;
+    managerName: string;
+    phone: string;
+    status: 'active' | 'inactive';
+  }>({
+    name: '',
+    code: '',
+    type: 'branch',
+    city: 'Dhaka',
+    address: '',
+    managerName: '',
+    phone: '',
+    status: 'active',
+  });
+
+  const webhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/.netlify/functions/iclock`;
+
+  const openCreateBranchModal = () => {
+    setEditingBranch(null);
+    setFormData({
+      name: '',
+      code: `BR-0${branches.length + 1}`,
+      type: 'branch',
+      city: '',
+      address: '',
+      managerName: '',
+      phone: '',
+      status: 'active',
+    });
+    setShowBranchModal(true);
+  };
+
+  const openEditBranchModal = (branch: Branch) => {
+    setEditingBranch(branch);
+    setFormData({
+      name: branch.name || '',
+      code: branch.code || 'BR-01',
+      type: branch.type || (branch.isHeadOffice ? 'head_office' : 'branch'),
+      city: branch.city || 'Dhaka',
+      address: branch.address || '',
+      managerName: branch.managerName || '',
+      phone: branch.phone || '',
+      status: branch.status || 'active',
+    });
+    setShowBranchModal(true);
+  };
+
+  const handleSaveBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim()) return;
+
+    if (editingBranch) {
+      await updateBranch(editingBranch.id, {
+        ...formData,
+        name: formData.name.trim(),
+        code: formData.code.trim().toUpperCase(),
+        isHeadOffice: formData.type === 'head_office' || editingBranch.isHeadOffice,
+      });
+      addNotification({
+        title: 'Branch Office Updated',
+        message: `${formData.name} (${formData.code}) updated successfully.`,
+        read: false,
+        type: 'system',
+        targetPage: 'branches',
+      });
+    } else {
+      await addBranch({
+        ...formData,
+        name: formData.name.trim(),
+        code: formData.code.trim().toUpperCase(),
+        isHeadOffice: formData.type === 'head_office',
+      });
+      addNotification({
+        title: 'New Branch Office Added',
+        message: `${formData.name} (${formData.code}) is now connected to your central HR & Biometric workspace.`,
+        read: false,
+        type: 'system',
+        targetPage: 'branches',
+      });
+    }
+    setShowBranchModal(false);
+    setEditingBranch(null);
+  };
+
+  const handleDeleteBranch = (branch: Branch) => {
+    if (branch.isHeadOffice || branch.type === 'head_office') {
+      addNotification({
+        title: 'Main Head Office Protected',
+        message: 'Main Head Office cannot be deleted. You can edit its name or address.',
+        read: false,
+        type: 'system',
+      });
+      return;
+    }
+    setBranchToDelete(branch);
+    setDeleteWarningStep(1);
+  };
+
+  const handleConfirmPermanentDelete = async () => {
+    if (!branchToDelete) return;
+    setIsDeletingBranch(true);
+    try {
+      const targetName = branchToDelete.name;
+      await deleteBranch(branchToDelete.id);
+      addNotification({
+        title: 'Branch Office Permanently Deleted',
+        message: `"${targetName}" has been permanently deleted from the database.`,
+        read: false,
+        type: 'system',
+        targetPage: 'branches',
+      });
+      setBranchToDelete(null);
+      setDeleteWarningStep(1);
+    } finally {
+      setIsDeletingBranch(false);
+    }
+  };
+
+  const handleCopyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2000);
+  };
+
+  const filteredBranches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return branches;
+    return branches.filter(
+      b =>
+        b.name.toLowerCase().includes(q) ||
+        b.code.toLowerCase().includes(q) ||
+        (b.city || '').toLowerCase().includes(q) ||
+        (b.managerName || '').toLowerCase().includes(q)
+    );
+  }, [branches, search]);
+
+  const getTypeBadge = (branch: Branch) => {
+    if (branch.isHeadOffice || branch.type === 'head_office') {
+      return { label: '🏛️ MAIN HEAD OFFICE', cls: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
+    }
+    if (branch.type === 'factory') {
+      return { label: '🏭 FACTORY / PLANT', cls: 'bg-amber-100 text-amber-800 border-amber-200' };
+    }
+    if (branch.type === 'warehouse') {
+      return { label: '📦 WAREHOUSE / DEPOT', cls: 'bg-teal-100 text-teal-800 border-teal-200' };
+    }
+    return { label: '🏢 BRANCH OFFICE', cls: 'bg-violet-100 text-violet-800 border-violet-200' };
+  };
+
+  return (
+    <div className="space-y-6 max-w-[1600px] mx-auto animate-fade-in pb-12">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+            <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">
+              Centralized Multi-Branch HR &amp; Biometric Cloud
+            </span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
+            Head Office &amp; Branch Offices Management
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            ঢাকার Main Head Office এবং দেশের সকল Branch Office-এর Biometric Attendance Machine, Employee, Shift, Leave ও Payroll একই সফটওয়্যার থেকে একসাথে নিয়ন্ত্রণ করুন।
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+          <button
+            onClick={() => {
+              setPreselectedBranchForDevice(!isAllBranchesSelected ? activeBranch : (branches[0]?.name || 'Main Head Office (Dhaka)'));
+              setIsDeviceModalOpen(true);
+            }}
+            className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+          >
+            <IconFingerprint size={16} className="text-indigo-600" />
+            <span>Register Branch Attendance Machine</span>
+          </button>
+
+          <button
+            onClick={openCreateBranchModal}
+            className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+          >
+            <IconPlus size={16} />
+            <span>Add New Branch Office</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Global Active Branch Switcher Banner */}
+      <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl text-white shadow-lg border border-indigo-500/20">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500 text-white">
+                Global Workspace Switcher
+              </span>
+              <span className="text-xs text-indigo-200 font-medium">
+                Currently Viewing:{' '}
+                <strong className="text-white">
+                  {isAllBranchesSelected ? '🌐 All Offices (Head Office + All Branches Together)' : `🏢 ${activeBranch}`}
+                </strong>
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1">
+              নিচের যেকোনো Branch সিলেক্ট করলে পুরো সফটওয়্যারের Attendance, Employees, Payroll এবং Reports সাথে সাথে সেই Branch অনুযায়ী ফিল্টার হবে, অথবা &ldquo;All Branches&rdquo; দিয়ে সব একসাথে দেখুন।
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveBranch('All')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                isAllBranchesSelected
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25'
+                  : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+              }`}
+            >
+              <span>🌐 All Offices ({allEmployees.length} Staff)</span>
+            </button>
+            {branches.map(b => {
+              const isSelected = activeBranch.toLowerCase() === b.name.toLowerCase();
+              const count = allEmployees.filter(e => getEmployeeBranch(e).toLowerCase() === b.name.toLowerCase()).length;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => setActiveBranch(b.name)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    isSelected
+                      ? 'bg-indigo-500 text-white ring-2 ring-white/50 shadow-md'
+                      : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10'
+                  }`}
+                >
+                  <span>{b.isHeadOffice || b.type === 'head_office' ? '🏛️' : '🏢'}</span>
+                  <span>{b.name}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px]">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Offices</span>
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <IconBuilding size={18} />
+            </div>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-slate-900 mt-2">{branches.length}</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            1 Head Office + {Math.max(0, branches.length - 1)} Branch {branches.length - 1 === 1 ? 'Office' : 'Offices'}
+          </p>
+        </div>
+
+        <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Total Staff (All Branches)</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <IconUsers size={18} />
+            </div>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-emerald-600 mt-2">{allEmployees.length}</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {allEmployees.filter(e => e.status === 'active').length} active employees across all locations
+          </p>
+        </div>
+
+        <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-violet-600 uppercase tracking-wider">Branch Biometric Machines</span>
+            <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
+              <IconFingerprint size={18} />
+            </div>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-violet-700 mt-2">{allDevices.length}</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {allDevices.filter(d => d.enabled !== false).length} active ZKTeco terminals connected
+          </p>
+        </div>
+
+        <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-teal-600 uppercase tracking-wider">Cloud ADMS Sync</span>
+            <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+              <IconCloud size={18} />
+            </div>
+          </div>
+          <p className="text-lg sm:text-xl font-black text-teal-700 mt-2">Real-Time Push</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            All branch machines sync to 1 central DB
+          </p>
+        </div>
+      </div>
+
+      {/* Search & Quick Actions Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="flex-1 max-w-md">
+          <input
+            type="text"
+            placeholder="🔍 Search branch office by name, code, city, or manager..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {onNavigate && (
+            <>
+              <button
+                onClick={() => onNavigate('attendance')}
+                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold transition-all cursor-pointer"
+              >
+                ⏱️ View Attendance Sheet
+              </button>
+              <button
+                onClick={() => onNavigate('zkteco')}
+                className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl font-bold transition-all cursor-pointer"
+              >
+                📟 All Biometric Machines ({allDevices.length})
+              </button>
+              <button
+                onClick={() => onNavigate('payroll')}
+                className="px-3 py-2 bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 rounded-xl font-bold transition-all cursor-pointer"
+              >
+                💵 Branch Payroll
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Branch Office Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        {filteredBranches.map(branch => {
+          const badge = getTypeBadge(branch);
+          const branchEmployees = allEmployees.filter(
+            e => getEmployeeBranch(e).toLowerCase() === branch.name.toLowerCase()
+          );
+          const branchDevices = allDevices.filter(
+            d => getDeviceBranch(d).toLowerCase() === branch.name.toLowerCase()
+          );
+          const isCurrentFilter = activeBranch.toLowerCase() === branch.name.toLowerCase();
+
+          return (
+            <div
+              key={branch.id}
+              className={`rounded-3xl border transition-all p-5 sm:p-6 flex flex-col justify-between bg-white shadow-sm ${
+                isCurrentFilter
+                  ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                  : 'border-slate-200/90 hover:border-indigo-300'
+              }`}
+            >
+              <div>
+                {/* Top Badges */}
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${badge.cls}`}>
+                    {badge.label}
+                  </span>
+                  <div className="flex items-center space-x-1.5">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                      {branch.code}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        branch.status === 'active'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {branch.status === 'active' ? '● Active' : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Branch Name & Location */}
+                <h3 className="text-lg font-black text-slate-900 tracking-tight">{branch.name}</h3>
+                <p className="text-xs text-slate-500 mt-0.5 flex items-center space-x-1">
+                  <span>📍</span>
+                  <span>{branch.address || branch.city || 'Bangladesh'}</span>
+                </p>
+
+                {(branch.managerName || branch.phone) && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[11px] text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                    {branch.managerName && (
+                      <span>
+                        👤 Manager: <strong className="text-slate-800">{branch.managerName}</strong>
+                      </span>
+                    )}
+                    {branch.phone && (
+                      <span className="font-mono">📞 {branch.phone}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Branch Metrics Row */}
+                <div className="grid grid-cols-2 gap-2.5 my-4">
+                  <div className="p-3 rounded-2xl bg-indigo-50/60 border border-indigo-100">
+                    <span className="text-[10px] font-bold text-indigo-600 uppercase block">Assigned Staff</span>
+                    <div className="flex items-baseline justify-between mt-0.5">
+                      <span className="text-xl font-black text-indigo-950">{branchEmployees.length}</span>
+                      {onNavigate && (
+                        <button
+                          onClick={() => {
+                            setActiveBranch(branch.name);
+                            onNavigate('employee');
+                          }}
+                          className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                        >
+                          View Staff →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100">
+                    <span className="text-[10px] font-bold text-emerald-700 uppercase block">Attendance Machines</span>
+                    <div className="flex items-baseline justify-between mt-0.5">
+                      <span className="text-xl font-black text-emerald-950">{branchDevices.length}</span>
+                      <button
+                        onClick={() => {
+                          setPreselectedBranchForDevice(branch.name);
+                          setIsDeviceModalOpen(true);
+                        }}
+                        className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                      >
+                        + Add Machine
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Installed Biometric Machines in this Branch */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <span>Installed Biometric Terminals</span>
+                    <span>{branchDevices.length} Connected</span>
+                  </div>
+
+                  {branchDevices.length === 0 ? (
+                    <div className="p-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 text-center">
+                      <p className="text-[11px] text-slate-500">No biometric machine registered for {branch.name} yet.</p>
+                      <button
+                        onClick={() => {
+                          setPreselectedBranchForDevice(branch.name);
+                          setIsDeviceModalOpen(true);
+                        }}
+                        className="mt-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                      >
+                        + Register ZKTeco Machine for {branch.code}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 thin-scroll">
+                      {branchDevices.map(dev => (
+                        <div
+                          key={dev.id}
+                          className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800 truncate flex items-center space-x-1.5">
+                              <span>📟</span>
+                              <span>{dev.name}</span>
+                            </p>
+                            <p className="text-[10px] font-mono text-slate-500 truncate">
+                              SN: {dev.serialNumber || dev.serial} • {dev.model || 'ZKTeco'}
+                            </p>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                              dev.enabled !== false
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {dev.enabled !== false ? 'Active' : 'Disabled'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card Footer Actions */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <button
+                  onClick={() => setActiveBranch(isCurrentFilter ? 'All' : branch.name)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    isCurrentFilter
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700'
+                  }`}
+                >
+                  <IconActivity size={13} />
+                  <span>{isCurrentFilter ? '✓ Active Branch Filter (Reset)' : 'Filter App by Branch'}</span>
+                </button>
+
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => openEditBranchModal(branch)}
+                    className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                    title="Edit Branch Office"
+                  >
+                    <IconEdit size={15} />
+                  </button>
+                  {!branch.isHeadOffice && branch.type !== 'head_office' && (
+                    <button
+                      onClick={() => handleDeleteBranch(branch)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      title="Delete Branch Office"
+                    >
+                      <IconTrash size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Multi-Branch Biometric Hardware Connection Guide */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <IconServer size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                কিভাবে ঢাকার Head Office এবং সকল Branch Office-এর Attendance Machine একই সফটওয়্যারে যুক্ত করবেন?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Central ADMS Cloud Push Protocol — আলাদা কোনো সার্ভার বা লোকাল পিসি ছাড়াই সব ব্রাঞ্চের মেশিন সরাসরি কানেক্ট হবে
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              readOnly
+              value={webhookUrl}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-700 w-64 sm:w-80"
+            />
+            <button
+              onClick={handleCopyWebhook}
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0"
+            >
+              {copiedWebhook ? '✓ Copied' : 'Copy Server URL'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+            <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-black text-[10px] uppercase">
+              Step 1 • Register Branch &amp; Machine
+            </span>
+            <h4 className="font-bold text-slate-900 text-sm">১. ব্রাঞ্চ ও মেশিনের Serial Number যুক্ত করুন</h4>
+            <p className="text-slate-600 leading-relaxed">
+              প্রথমে এখানে আপনার প্রতিটি Branch Office (যেমন: Dhaka Head Office, Chattogram Branch, Sylhet Branch) তৈরি করুন। এরপর প্রতিটি ব্রাঞ্চের ZKTeco মেশিনের <strong>Serial Number (SN)</strong> দিয়ে ওই ব্রাঞ্চের অধীনে Register করুন।
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-black text-[10px] uppercase">
+              Step 2 • Branch Machine ADMS Setup
+            </span>
+            <h4 className="font-bold text-slate-900 text-sm">২. প্রতিটি ব্রাঞ্চের মেশিনে Cloud Server URL দিন</h4>
+            <p className="text-slate-600 leading-relaxed">
+              যে কোনো ব্রাঞ্চের ZKTeco মেশিনে ইন্টারনেট (Wi-Fi বা LAN) সংযোগ দিয়ে <strong>Menu &gt; Comm. &gt; Cloud Server Setting (ADMS)</strong>-এ গিয়ে উপরের Server Address এবং Port <strong>443</strong> বসিয়ে দিন।
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+            <span className="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-black text-[10px] uppercase">
+              Step 3 • Unified HR &amp; Payroll Control
+            </span>
+            <h4 className="font-bold text-slate-900 text-sm">৩. এক সফটওয়্যার থেকেই সব ব্রাঞ্চ মেইনটেইন করুন</h4>
+            <p className="text-slate-600 leading-relaxed">
+              যেকোনো ব্রাঞ্চের কর্মী পাঞ্চ করলেই সাথে সাথে তার ব্রাঞ্চ ও শিফট অনুযায়ী <strong>Present / Late / Overtime / Payroll</strong> অটোমেটিক ক্যালকুলেট হবে। উপরের <strong>Branch Switcher</strong> দিয়ে আলাদা বা একসাথে সব ব্রাঞ্চ দেখুন!
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Add / Edit Branch Modal */}
+      {showBranchModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          onClick={() => setShowBranchModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md">
+                  <IconBuilding size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">
+                    {editingBranch ? `Edit ${editingBranch.name}` : 'Add New Branch Office'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Configure branch office details for centralized HR &amp; biometric attendance
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBranchModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {!editingBranch && (
+              <div className="mt-4">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Quick Fill Common Branch Presets:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_BRANCH_PRESETS.map(preset => (
+                    <button
+                      key={preset.code}
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          name: preset.name,
+                          code: preset.code,
+                          city: preset.city,
+                          address: preset.address,
+                          type: preset.type,
+                        })
+                      }
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-[11px] font-semibold transition-all cursor-pointer"
+                    >
+                      + {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveBranch} className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Branch / Office Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Chattogram Branch or Banani Branch"
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Branch Code <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. BR-CTG"
+                    value={formData.code}
+                    onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Office Type
+                  </label>
+                  <select
+                    value={formData.type}
+                    onChange={e => setFormData({ ...formData, type: e.target.value as Branch['type'] })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="head_office">🏛️ Main Head Office</option>
+                    <option value="branch">🏢 Branch Office</option>
+                    <option value="factory">🏭 Factory / Production Plant</option>
+                    <option value="warehouse">📦 Warehouse / Regional Depot</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    City / District
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dhaka, Chattogram, Sylhet"
+                    value={formData.city}
+                    onChange={e => setFormData({ ...formData, city: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Full Branch Address
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. House 12, Road 5, Dhanmondi, Dhaka"
+                  value={formData.address}
+                  onChange={e => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Branch Manager / In-Charge
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Kamrul Hasan"
+                    value={formData.managerName}
+                    onChange={e => setFormData({ ...formData, managerName: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Branch Contact Phone
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. +880 1711-000000"
+                    value={formData.phone}
+                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBranchModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <IconCheck size={16} />
+                  <span>{editingBranch ? 'Save Branch Changes' : 'Create Branch Office'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2-Step Warning Modal Before Deleting a Branch Office */}
+      {branchToDelete && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4"
+          onClick={() => {
+            if (!isDeletingBranch) {
+              setBranchToDelete(null);
+              setDeleteWarningStep(1);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-7 max-h-[88dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Step Progress Indicator */}
+            <div className="flex items-center justify-between mb-4">
+              <span
+                className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                  deleteWarningStep === 1
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                    : 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
+                }`}
+              >
+                {deleteWarningStep === 1
+                  ? '⚠️ Warning 1 of 2 • ১ম সতর্কবার্তা'
+                  : '🚨 Final Warning 2 of 2 • চূড়ান্ত সতর্কবার্তা'}
+              </span>
+              <button
+                type="button"
+                disabled={isDeletingBranch}
+                onClick={() => {
+                  setBranchToDelete(null);
+                  setDeleteWarningStep(1);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {deleteWarningStep === 1 ? (
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-2xl shrink-0">
+                    ⚠️
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">
+                      আপনি কি এই ব্রাঞ্চ অফিসটি ডিলিট করতে চান?
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      First Confirmation (১ম সতর্কবার্তা) — অনুগ্রহ করে ব্রাঞ্চের তথ্য যাচাই করুন
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Branch Name:</span>
+                    <span className="font-black text-slate-900 text-sm">{branchToDelete.name}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Branch Code:</span>
+                    <span className="font-mono font-bold text-indigo-700">{branchToDelete.code}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">Location:</span>
+                    <span className="font-semibold text-slate-700">{branchToDelete.address || branchToDelete.city}</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  আপনি <strong>{branchToDelete.name}</strong> ডিলিট করার প্রক্রিয়া শুরু করেছেন। ডিলিট করার আগে আপনাকে <strong>২ বার সতর্কবার্তা (Warning)</strong> দেওয়া হবে। এটি ১ম সতর্কবার্তা। আপনি কি পরবর্তী চূড়ান্ত ধাপে যেতে চান?
+                </p>
+
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchToDelete(null);
+                      setDeleteWarningStep(1);
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                  >
+                    Cancel (বাতিল করুন)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteWarningStep(2)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md transition-all cursor-pointer text-center"
+                  >
+                    Yes, Show 2nd Warning → (হ্যাঁ, ২য় সতর্কবার্তা দেখুন)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center text-2xl shrink-0">
+                    🚨
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-rose-700">
+                      চূড়ান্ত সতর্কবার্তা (২/২): স্থায়ীভাবে মুছে যাবে!
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Final Confirmation — ডাটাবেজ থেকে চিরস্থায়ীভাবে ডিলিট করার চূড়ান্ত অনুমোদন
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-200 space-y-2 text-xs text-rose-900">
+                  <p className="font-bold text-sm">
+                    🗑️ &ldquo;{branchToDelete.name}&rdquo; ({branchToDelete.code})
+                  </p>
+                  <p className="leading-relaxed">
+                    এখন <strong>Confirm Permanent Delete</strong> বাটনে ক্লিক করলে এই ব্রাঞ্চ অফিসটি <strong>Firebase Cloud Database থেকে সম্পূর্ণরূপে মুছে যাবে</strong>। (এই ব্রাঞ্চের অধীনে কোনো স্টাফ বা মেশিন থাকলে সেগুলো নিরাপদে Main Head Office-এ যুক্ত থাকবে)।
+                  </p>
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isDeletingBranch}
+                    onClick={() => setDeleteWarningStep(1)}
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                  >
+                    ← Back (ফিরে যান)
+                  </button>
+                  <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      disabled={isDeletingBranch}
+                      onClick={() => {
+                        setBranchToDelete(null);
+                        setDeleteWarningStep(1);
+                      }}
+                      className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeletingBranch}
+                      onClick={handleConfirmPermanentDelete}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-500/25 flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <IconTrash size={15} />
+                      <span>
+                        {isDeletingBranch ? 'Deleting from DB...' : 'Confirm Permanent Delete (ডিলিট করুন)'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Register Biometric Device Modal (pre-assigned to selected Branch) */}
+      <BiometricDeviceModal
+        isOpen={isDeviceModalOpen}
+        defaultBranch={preselectedBranchForDevice}
+        onClose={() => {
+          setIsDeviceModalOpen(false);
+          setPreselectedBranchForDevice('');
+        }}
+      />
+    </div>
+  );
+}

@@ -1,0 +1,813 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'sayemsiraj@gmail.com' ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'Super Admin' &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isSuperAdmin == true &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.email == 'sayemsiraj@gmail.com')
+      );
+    }
+
+    function getUserCompanyId() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId
+        : (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.companyId
+            : (request.auth.token.email == 'sayemsiraj@gmail.com' ? 'default' : '__unassigned__'));
+    }
+
+    function getUserRole() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role
+            : (request.auth.token.email == 'sayemsiraj@gmail.com' ? 'Super Admin' : 'None'));
+    }
+
+    function isEmployeeRole() {
+      return isSignedIn() && !isSuperAdmin() && getUserRole() == 'Employee';
+    }
+
+    function getUserEmployeeId() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId
+        : '__none__';
+    }
+
+    function getUserEmployeeDocId() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeDocId
+        : '__none__';
+    }
+
+    function isManagerEmployee() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isManager == true;
+    }
+
+    function isTenantOwner() {
+      let myComp = getUserCompanyId();
+      return isSignedIn() && !isEmployeeRole() && myComp != '__unassigned__' && (
+        (exists(/databases/$(database)/documents/companies/$(myComp)) &&
+         get(/databases/$(database)/documents/companies/$(myComp)).data.ownerEmail == request.auth.token.email) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isTenantOwner == true)
+      );
+    }
+
+    function isCompanyActive(compId) {
+      return compId == 'default' || (
+        exists(/databases/$(database)/documents/companies/$(compId)) &&
+        get(/databases/$(database)/documents/companies/$(compId)).data.status == 'active'
+      );
+    }
+
+    function belongsToMyCompany(docData) {
+      let myComp = getUserCompanyId();
+      return isSuperAdmin() || (
+        myComp != '__unassigned__' && (
+          (myComp == 'default' && (!('companyId' in docData) || docData.companyId == 'default')) ||
+          (docData.companyId == myComp)
+        )
+      );
+    }
+
+    function hasNoSuperAdminEscalation(data) {
+      return (!('isSuperAdmin' in data) || data.isSuperAdmin == false) &&
+             (!('isPrimarySuperAdmin' in data) || data.isPrimarySuperAdmin == false);
+    }
+
+    // 1. Companies Collection
+    match /companies/{companyId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && getUserCompanyId() == companyId);
+      allow create, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        getUserCompanyId() == companyId &&
+        (!('subscription' in request.resource.data) || request.resource.data.subscription == resource.data.subscription) &&
+        (!('status' in request.resource.data) || request.resource.data.status == resource.data.status) &&
+        (!('ownerEmail' in request.resource.data) || request.resource.data.ownerEmail == resource.data.ownerEmail) &&
+        (!('id' in request.resource.data) || request.resource.data.id == resource.data.id)
+      );
+    }
+
+    // 2. Admins Collection — Strict Field-Level Authorization & Anti-Escalation
+    match /admins/{adminId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        (
+          request.auth.uid == adminId ||
+          resource.data.email == request.auth.token.email ||
+          resource.data.companyId == getUserCompanyId()
+        )
+      );
+
+      // Only Super Admin or a verified Tenant Owner (creating a sub-admin for their own company) can create admin docs.
+      // Normal users can NEVER set isSuperAdmin=true, isPrimarySuperAdmin=true, or assign another tenant's companyId.
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        isTenantOwner() &&
+        request.resource.data.companyId == getUserCompanyId() &&
+        request.auth.uid != adminId &&
+        request.resource.data.email != request.auth.token.email &&
+        hasNoSuperAdminEscalation(request.resource.data) &&
+        (!('isTenantOwner' in request.resource.data) || request.resource.data.isTenantOwner == false)
+      );
+
+      // On update: companyId is strictly immutable; isSuperAdmin/isPrimarySuperAdmin must remain false for non-Super-Admins.
+      // If a user updates their own admin record, they can ONLY update profile/password fields and can NEVER change role, permissions, status, or companyId.
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        resource.data.companyId == getUserCompanyId() &&
+        request.resource.data.companyId == resource.data.companyId &&
+        hasNoSuperAdminEscalation(request.resource.data) &&
+        (
+          (request.auth.uid == adminId || resource.data.email == request.auth.token.email)
+            ? (
+                request.resource.data.role == resource.data.role &&
+                request.resource.data.permissions == resource.data.permissions &&
+                request.resource.data.status == resource.data.status &&
+                (!('isTenantOwner' in request.resource.data) || request.resource.data.isTenantOwner == resource.data.isTenantOwner) &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'avatar', 'phone', 'password', 'lastLogin', 'updatedAt'])
+              )
+            : (
+                isTenantOwner() &&
+                (!('isTenantOwner' in request.resource.data) || request.resource.data.isTenantOwner == false)
+              )
+        )
+      );
+
+      allow delete: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        isTenantOwner() &&
+        resource.data.companyId == getUserCompanyId() &&
+        request.auth.uid != adminId &&
+        resource.data.email != request.auth.token.email
+      );
+    }
+
+    // 3. Users Collection (Firebase Auth user mapping) — Strict Anti-Escalation
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+
+      // Only Super Admin or a verified Tenant Admin provisioning an Employee/Sub-Admin within their own companyId can create user mappings.
+      // Normal users can NEVER create their own user doc or escalate privileges!
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        getUserCompanyId() != '__unassigned__' &&
+        request.resource.data.companyId == getUserCompanyId() &&
+        request.auth.uid != userId &&
+        hasNoSuperAdminEscalation(request.resource.data) &&
+        (
+          request.resource.data.role == 'Employee' ||
+          (isTenantOwner() && (!('isTenantOwner' in request.resource.data) || request.resource.data.isTenantOwner == false))
+        )
+      );
+
+      // A normal user can ONLY update non-privileged profile/timestamp fields on their own document.
+      // companyId, role, permissions, isSuperAdmin, isPrimarySuperAdmin, isTenantOwner, employeeId, employeeDocId are strictly immutable!
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.companyId == resource.data.companyId &&
+        request.resource.data.role == resource.data.role &&
+        hasNoSuperAdminEscalation(request.resource.data) &&
+        (!('permissions' in request.resource.data) || request.resource.data.permissions == resource.data.permissions) &&
+        (!('isTenantOwner' in request.resource.data) || request.resource.data.isTenantOwner == resource.data.isTenantOwner) &&
+        (!('employeeId' in request.resource.data) || request.resource.data.employeeId == resource.data.employeeId) &&
+        (!('employeeDocId' in request.resource.data) || request.resource.data.employeeDocId == resource.data.employeeDocId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'displayName', 'avatar', 'phone', 'lastLogin', 'updatedAt'])
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // 4. Tenant Scoped Operational Collections:
+    // Employees
+    match /employees/{employeeId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || employeeId == getUserEmployeeDocId() || resource.data.employeeId == getUserEmployeeId())
+      );
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() || (
+            (employeeId == getUserEmployeeDocId() || resource.data.employeeId == getUserEmployeeId()) &&
+            request.resource.data.companyId == resource.data.companyId &&
+            request.resource.data.id == resource.data.id &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'phone', 'address', 'emergencyContact', 'password', 'updatedAt', 'companyId', 'id'])
+          )
+        )
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Departments
+    match /departments/{deptId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Branches (Head Office & Branch Offices)
+    match /branches/{branchId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Shifts
+    match /shifts/{shiftId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Roster
+    match /roster/{rosterId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Attendance
+    match /attendance/{attendanceId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Punches
+    match /punches/{punchId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Leave Requests
+    match /leaveRequests/{leaveId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (request.resource.data.status == 'pending' && (request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())))
+      );
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (isManagerEmployee() && resource.data.employeeId != getUserEmployeeId() && resource.data.employeeId != getUserEmployeeDocId()))
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Attendance Requests (Regularization)
+    match /attendance_requests/{reqId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (request.resource.data.status == 'pending' && (request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())))
+      );
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (isManagerEmployee() && resource.data.employeeId != getUserEmployeeId() && resource.data.employeeId != getUserEmployeeDocId()))
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Payroll Runs
+    match /payroll_runs/{runId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Biometric Devices
+    match /zkteco_devices/{devId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Candidates
+    match /candidates/{candId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Recruitment Jobs
+    match /recruitment/{jobId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Team Messages
+    match /messages/{msgId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data) && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 5. Subscription Billing & Manual Payments (BDT Only, Strictly Tenant-Isolated)
+    match /subscription_invoices/{invoiceId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        belongsToMyCompany(request.resource.data) &&
+        request.resource.data.currency == 'BDT' &&
+        request.resource.data.status == 'unpaid' &&
+        request.resource.data.paidAmount == 0 &&
+        request.resource.data.renewalApplied == false
+      );
+      allow update: if isSuperAdmin();
+      allow delete: if false;
+    }
+
+    match /subscription_payments/{paymentId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        belongsToMyCompany(request.resource.data) &&
+        request.resource.data.currency == 'BDT' &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.approvedAmount == 0 &&
+        request.resource.data.renewalApplied == false &&
+        request.resource.data.method in ['bkash', 'nagad', 'bank_transfer', 'cash']
+      );
+      allow update: if isSuperAdmin();
+      allow delete: if false;
+    }
+
+    match /subscription_audit_logs/{logId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        !isEmployeeRole() &&
+        belongsToMyCompany(request.resource.data) &&
+        request.resource.data.action in ['INVOICE_CREATED', 'PAYMENT_SUBMITTED']
+      );
+      allow update, delete: if false;
+    }
+
+    // Settings (global & legacy fallback)
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin() || (isSignedIn() && settingId != 'security' && settingId != 'billing_instructions');
+    }
+
+    // 6. Phase 1: Workflow & Approval Engine
+    match /workflow_requests/{reqId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (request.resource.data.status == 'pending' && (request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())))
+      );
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (isManagerEmployee() && resource.data.employeeId != getUserEmployeeId() && resource.data.employeeId != getUserEmployeeDocId()))
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 7. Phase 1: Employee Document Management (Strict Employee Privacy Isolation)
+    match /hr_documents/{docId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          resource.data.visibility == 'company_policy' ||
+          (resource.data.visibility == 'employee_private' && (resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId()))
+        )
+      );
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() ||
+          (request.resource.data.visibility == 'employee_private' && (request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId()))
+        )
+      );
+      allow update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 8. Phase 1: Enterprise Audit Logs (Immutable)
+    match /audit_logs/{logId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update, delete: if false;
+    }
+
+    // 9. Phase 2: Performance Management (Cycles, Goals/KPIs, Appraisals)
+    match /performance_cycles/{cycleId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    match /performance_goals/{goalId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /performance_appraisals/{appId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 10. Phase 2: Salary Advances & Employee Loans
+    match /salary_advances/{advId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    // 11. Phase 2: Expense Management
+    match /expense_claims/{claimId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (request.resource.data.status == 'pending' && (request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())))
+      );
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || (isManagerEmployee() && resource.data.employeeId != getUserEmployeeId() && resource.data.employeeId != getUserEmployeeDocId()))
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 12. Phase 2: Onboarding & Offboarding
+    match /onboarding_records/{recId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /offboarding_records/{recId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || request.resource.data.employeeId == getUserEmployeeId() || request.resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 13. Phase 3: Workforce Planning & Employee Movement History
+    match /workforce_plans/{planId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    match /employee_movements/{movId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (!isEmployeeRole() || isManagerEmployee() || resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+      );
+      allow create: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 14. Phase 3: Employee Engagement, Announcements, Recognitions, Feedback & Pulse Surveys
+    match /company_announcements/{annId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acknowledgedBy', 'companyId'])
+        )
+      );
+    }
+
+    match /employee_recognitions/{recId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /employee_feedback/{fbId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          resource.data.employeeId == getUserEmployeeId() ||
+          resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        (!isEmployeeRole() || isManagerEmployee()) &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data)
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /pulse_surveys/{surveyId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    match /pulse_survey_responses/{respId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          resource.data.employeeId == getUserEmployeeId() ||
+          resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 15. Phase 4: Learning & Development, Skills, Career, Talent Pool & Succession Planning
+    match /training_courses/{courseId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    match /training_enrollments/{enrId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          resource.data.employeeId == getUserEmployeeId() ||
+          resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          request.resource.data.employeeId == getUserEmployeeId() ||
+          request.resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /employee_skills/{skillId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          resource.data.employeeId == getUserEmployeeId() ||
+          resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          request.resource.data.employeeId == getUserEmployeeId() ||
+          request.resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /position_skill_requirements/{posId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    match /career_pathways/{pathId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update, delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+    }
+
+    match /career_development_plans/{idpId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          resource.data.employeeId == getUserEmployeeId() ||
+          resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          request.resource.data.employeeId == getUserEmployeeId() ||
+          request.resource.data.employeeId == getUserEmployeeDocId()
+        )
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Strictly confidential Talent Pool & 9-Box profiles:
+    // Regular employees can ONLY read their own profile if shareWithEmployee == true, and can never write/modify.
+    match /talent_profiles/{talId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          isManagerEmployee() ||
+          (
+            resource.data.shareWithEmployee == true &&
+            (resource.data.employeeId == getUserEmployeeId() || resource.data.employeeId == getUserEmployeeDocId())
+          )
+        )
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        (!isEmployeeRole() || isManagerEmployee()) &&
+        belongsToMyCompany(request.resource.data)
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Strictly confidential Succession Plans:
+    // Regular employees can NEVER read or write succession plans.
+    match /succession_plans/{sucId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        (!isEmployeeRole() || isManagerEmployee()) &&
+        belongsToMyCompany(resource.data)
+      );
+      allow create, update: if isSuperAdmin() || (
+        isSignedIn() &&
+        (!isEmployeeRole() || isManagerEmployee()) &&
+        belongsToMyCompany(request.resource.data)
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 16. Phase 5: Internationalization & Global Legal Entities, Country Holidays, Country Payroll Configurations
+    match /global_legal_entities/{entId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /country_holidays/{holId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(resource.data));
+      allow create, update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /country_payroll_configs/{cfgId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create, update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // 17. Phase 5: Enterprise Security — Custom Roles & Security Sessions
+    match /custom_roles/{roleId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+      allow create, update: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(request.resource.data));
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    match /security_sessions/{sessId} {
+      allow read: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        (
+          !isEmployeeRole() ||
+          resource.data.actorId == getUserEmployeeId() ||
+          resource.data.actorId == getUserEmployeeDocId()
+        )
+      );
+      allow create: if isSuperAdmin() || (isSignedIn() && belongsToMyCompany(request.resource.data));
+      allow update: if isSuperAdmin() || (
+        isSignedIn() &&
+        belongsToMyCompany(resource.data) &&
+        belongsToMyCompany(request.resource.data) &&
+        (
+          !isEmployeeRole() ||
+          resource.data.actorId == getUserEmployeeId() ||
+          resource.data.actorId == getUserEmployeeDocId()
+        )
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && !isEmployeeRole() && belongsToMyCompany(resource.data));
+    }
+
+    // Connection testing
+    match /connectionTest/{testId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

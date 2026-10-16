@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/iclock/*"
+  to = "/.netlify/functions/iclock"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/zkteco/*"
+  to = "/.netlify/functions/iclock"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
