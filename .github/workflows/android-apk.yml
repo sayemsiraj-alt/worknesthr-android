@@ -171,6 +171,54 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify the corrected launcher icon inside the built APK
+        run: |
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          python3 -m pip install --quiet pillow
+          python3 - "$APK" <<'PYEOF'
+          import math, subprocess, sys, zipfile, io
+          from PIL import Image
+
+          apk = sys.argv[1]
+          VISIBLE = 16
+          print("Checking launcher icons as packaged in the APK:")
+          zf = zipfile.ZipFile(apk)
+          names = [n for n in zf.namelist() if "mipmap" in n and n.endswith(".png")]
+          targets = [n for n in names if "ic_launcher_foreground" in n]
+          if not targets:
+              print("ERROR: no launcher foreground icons found in the APK"); sys.exit(1)
+
+          failures = 0
+          for name in sorted(targets):
+              im = Image.open(io.BytesIO(zf.read(name))).convert("RGBA")
+              cs = im.size[0]
+              mask = im.getchannel("A").point(lambda v: 255 if v > VISIBLE else 0)
+              bbox = mask.getbbox()
+              px = mask.load()
+              cx = cy = (cs - 1) / 2
+              worst = 0.0
+              for y in range(cs):
+                  for x in range(cs):
+                      if px[x, y]:
+                          d = math.hypot(x - cx, y - cy)
+                          if d > worst:
+                              worst = d
+              offx = (bbox[0] + bbox[2]) / 2 - cs / 2
+              offy = (bbox[1] + bbox[3]) / 2 - cs / 2
+              worst_dp = worst * 108 / cs
+              centred = abs(offx) < 1 and abs(offy) < 1
+              safe = worst_dp <= 36.0
+              if not (centred and safe):
+                  failures += 1
+              print(f"  {name:52s} {cs:>3}px  offset=({offx:+.1f},{offy:+.1f})  "
+                    f"max radius={worst_dp:.1f}dp  {'OK' if centred and safe else 'FAIL'}")
+          if failures:
+              print(f"ERROR: {failures} icon(s) inside the APK are off-centre or mask-unsafe")
+              sys.exit(1)
+          print("All launcher icons in the APK are centred and inside the 36dp safe circle.")
+          PYEOF
+
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
