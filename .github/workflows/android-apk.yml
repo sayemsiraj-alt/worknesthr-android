@@ -134,48 +134,16 @@ jobs:
           rm -f "$RUNNER_TEMP/worknest-release.jks"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Inspect built APK and publish verification report
-        run: |
-          set -euo pipefail
-          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          test -n "$APK" || { echo "::error::No debug APK produced"; exit 1; }
-          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | head -n 1)
-
-          {
-            echo "### WorkNest HR — APK verification"
-            echo
-            echo '```'
-            echo "file:   $APK"
-            echo "size:   $(du -h "$APK" | cut -f1)"
-            echo "sha256: $(sha256sum "$APK" | cut -d' ' -f1)"
-            echo
-            echo "--- aapt2 dump badging ---"
-            "$AAPT" dump badging "$APK" | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission" || true
-            echo
-            echo "--- bundled web assets inside the APK ---"
-            unzip -l "$APK" | grep -E "assets/public/(index.html|assets/)" | head -n 8 || true
-            echo "bundled public files: $(unzip -l "$APK" | grep -c 'assets/public/')"
-            echo
-            echo "--- launcher icon resources inside the APK ---"
-            unzip -l "$APK" | grep -E "mipmap.*ic_launcher" | head -n 8 || true
-            echo '```'
-          } | tee apk-report.md
-
-          cat apk-report.md >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            gh pr comment "$GITHUB_REF_NAME" --body-file apk-report.md \
-              || gh pr comment "$(gh pr list --head "$GITHUB_HEAD_REF" --json number --jq '.[0].number')" --body-file apk-report.md \
-              || echo "::notice::Could not post APK report comment"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Verify the corrected launcher icon inside the built APK
         run: |
           set -euo pipefail
           APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           python3 -m pip install --quiet pillow
+          {
+            echo "### Launcher icon alignment inside the built APK"
+            echo
+            echo '```'
+          } > icon-report.md
           python3 - "$APK" <<'PYEOF'
           import math, subprocess, sys, zipfile, io
           from PIL import Image
@@ -218,6 +186,51 @@ jobs:
               sys.exit(1)
           print("All launcher icons in the APK are centred and inside the 36dp safe circle.")
           PYEOF
+          echo '```' >> icon-report.md
+          cat icon-report.md
+          cat icon-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Inspect built APK and publish verification report
+        # Run even if the icon verification failed, so the report shows why.
+        if: always()
+        run: |
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          test -n "$APK" || { echo "::error::No debug APK produced"; exit 1; }
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | head -n 1)
+
+          {
+            echo "### WorkNest HR — APK verification"
+            echo
+            echo '```'
+            echo "file:   $APK"
+            echo "size:   $(du -h "$APK" | cut -f1)"
+            echo "sha256: $(sha256sum "$APK" | cut -d' ' -f1)"
+            echo
+            echo "--- aapt2 dump badging ---"
+            "$AAPT" dump badging "$APK" | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission" || true
+            echo
+            echo "--- bundled web assets inside the APK ---"
+            unzip -l "$APK" | grep -E "assets/public/(index.html|assets/)" | head -n 8 || true
+            echo "bundled public files: $(unzip -l "$APK" | grep -c 'assets/public/')"
+            echo
+            echo "--- launcher icon resources inside the APK ---"
+            unzip -l "$APK" | grep -E "mipmap.*ic_launcher" | head -n 8 || true
+            echo '```'
+          } | tee apk-report.md
+
+          # append the in-APK icon alignment results so one comment shows everything
+          if [ -f icon-report.md ]; then cat icon-report.md >> apk-report.md; fi
+
+          cat apk-report.md >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            gh pr comment "$GITHUB_REF_NAME" --body-file apk-report.md \
+              || gh pr comment "$(gh pr list --head "$GITHUB_HEAD_REF" --json number --jq '.[0].number')" --body-file apk-report.md \
+              || echo "::notice::Could not post APK report comment"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
