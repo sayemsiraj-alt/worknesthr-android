@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   android:
@@ -133,14 +134,42 @@ jobs:
           rm -f "$RUNNER_TEMP/worknest-release.jks"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Inspect built APK metadata
+      - name: Inspect built APK and publish verification report
         run: |
-          APK=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-          test -n "$APK" || { echo "::error::No APK produced"; exit 1; }
-          echo "APK: $APK"
-          ls -lh "$APK"
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          test -n "$APK" || { echo "::error::No debug APK produced"; exit 1; }
           AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | head -n 1)
-          "$AAPT" dump badging "$APK" | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable-activity" || true
+
+          {
+            echo "### WorkNest HR — APK verification"
+            echo
+            echo '```'
+            echo "file:   $APK"
+            echo "size:   $(du -h "$APK" | cut -f1)"
+            echo "sha256: $(sha256sum "$APK" | cut -d' ' -f1)"
+            echo
+            echo "--- aapt2 dump badging ---"
+            "$AAPT" dump badging "$APK" | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission" || true
+            echo
+            echo "--- bundled web assets inside the APK ---"
+            unzip -l "$APK" | grep -E "assets/public/(index.html|assets/)" | head -n 8 || true
+            echo "bundled public files: $(unzip -l "$APK" | grep -c 'assets/public/')"
+            echo
+            echo "--- launcher icon resources inside the APK ---"
+            unzip -l "$APK" | grep -E "mipmap.*ic_launcher" | head -n 8 || true
+            echo '```'
+          } | tee apk-report.md
+
+          cat apk-report.md >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            gh pr comment "$GITHUB_REF_NAME" --body-file apk-report.md \
+              || gh pr comment "$(gh pr list --head "$GITHUB_HEAD_REF" --json number --jq '.[0].number')" --body-file apk-report.md \
+              || echo "::notice::Could not post APK report comment"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
