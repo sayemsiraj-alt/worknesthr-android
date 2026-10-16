@@ -114,10 +114,24 @@ guessing: symbol = `y206–713`, full lockup = `(0,188,1139,1158)`.
 
 Generated with Pillow, preserving appearance (no recolouring, no substitution):
 
-- **Adaptive icon foreground** — symbol at 62 % of the 108 dp canvas, inside the 66 dp safe zone,
-  5 densities (108→432 px). Pairs with the template's existing white
-  `@color/ic_launcher_background`, which matches the logo's own white background.
+- **Adaptive icon foreground** — symbol sized to 62 % of the 108 dp canvas, then constrained so no
+  part of it leaves the 36 dp circular safe radius that Android guarantees, 5 densities
+  (108→432 px). Pairs with the template's existing white `@color/ic_launcher_background`, which
+  matches the logo's own white background.
 - **Legacy square + round icons** — symbol on the logo's white background, 48 dp, 5 densities.
+- **Alignment (corrected).** `Worknest Logo.png.png` contains ~37,000 near-invisible pixels
+  (alpha 1–8) forming a halo well outside the artwork. Measuring with `Image.getbbox()` counts any
+  `alpha != 0` pixel, so the first pass mistook the halo for artwork: the symbol crop spanned
+  x=103–1013 while the visible logo is x=276–1010. That added 173 px of dead space on the left but
+  only 3 px on the right, pushing the artwork ~5.8 % of the canvas width to the *right*
+  (measured +25.0 px at 432 px, margins L133 R83) and rendering it smaller than intended.
+  All launcher assets are now generated from the visible bounds (alpha > 16) with the content width
+  snapped to the canvas parity, giving an exact 0.0 px horizontal offset and even margins
+  (L82 R82 at 432 px). Generating from raw bounds also revealed that the outer tips of the "W"
+  reached up to 1.0 dp outside the 36 dp circular safe radius, so circular launcher masks would have
+  shaved them; the foreground is now mask-safe at every density (worst case 35.4 dp).
+  `scripts/generate_launcher_icons.py` regenerates and verifies all of this, and CI repeats the
+  assertions on the icons extracted from the built APK.
 - **Splashes** — full original lockup centred on white, all 11 drawable variants.
 - App name `WorkNest HR`, `applicationId app.worknesthr`, `versionCode 1`, `versionName "1.0"`,
   `minSdk 24`, `compileSdk/targetSdk 36`.
