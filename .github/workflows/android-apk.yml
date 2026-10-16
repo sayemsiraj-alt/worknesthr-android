@@ -144,7 +144,8 @@ jobs:
             echo
             echo '```'
           } > icon-report.md
-          python3 - "$APK" <<'PYEOF'
+          # pipefail (set above) propagates a failed assertion out of this step
+          python3 - "$APK" <<'PYEOF' | tee -a icon-report.md
           import math, subprocess, sys, zipfile, io
           from PIL import Image
 
