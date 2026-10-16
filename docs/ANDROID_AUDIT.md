@@ -1,8 +1,9 @@
 # WorkNest HR — Android Packaging: Audit, Plan & Verification
 
-**Status:** implementation complete on `arena/bbda70e6-worknesthr-android`; APK built and inspected by GitHub Actions.
+**Status:** ✅ APK built and verified by CI. Device QA still **NOT TESTED**.
 **Date:** 2026-10-16
-**Branch:** `arena/bbda70e-worknesthr-android`
+**Branch:** `arena/bbda70e6-worknesthr-android` · **Pull request:** #1
+**Verified artifact:** `app-debug.apk`, 6.0 MB, SHA-256 `096cc4d444df3336dc35a7d98086ebd70677a27ed7f7b8e771d5bfc2ec5e9bec`
 
 > **Previous revision of this document** reported a blocker because the repository contained
 > only a 21-byte README. The source has since been uploaded (commits `60253c3`, `29aec60`)
@@ -207,7 +208,27 @@ be committed.
 
 No existing workflow was replaced — the repository had none.
 
-### 5.3 Device QA (Phase 9) — **NOT TESTED**
+### 5.3 Verified APK contents (read from the built artifact)
+
+CI inspected the produced APK with `aapt2` and by listing its contents. Every assertion below comes
+from that output, not from the build succeeding:
+
+| Assertion | Observed value |
+|---|---|
+| Package | `app.worknesthr` |
+| Version | `versionCode='1' versionName='1.0'` |
+| Application label | `WorkNest HR` |
+| Min / target SDK | `sdkVersion:'24'` / `targetSdkVersion:'36'` (compileSdk 36) |
+| Permissions | `android.permission.INTERNET` **only** (+ AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, a self-scoped permission added automatically on API 34+) |
+| Bundled UI inside the APK | `assets/public/index.html` + `assets/public/assets/index-Cpn5mKFA.js` (3.25 MB) + `index-B9igzkhi.css` (214 KB) — 9 files; the UI is **not** downloaded from a website |
+| Launcher icons packaged | `mipmap-anydpi-v26/ic_launcher.xml`, `ic_launcher_round.xml`, and `ic_launcher{,_foreground,_round}.png` at every density |
+| Size / integrity | 6.0 MB, SHA-256 `096cc4d444df3336dc35a7d98086ebd70677a27ed7f7b8e771d5bfc2ec5e9bec` |
+
+Download it from the **Actions → Android APK → `worknest-hr-apk`** artifact (or the PR comment CI
+posts). *Note:* the agent sandbox cannot reach GitHub's artifact blob storage, so the APK was verified
+through CI's own inspection output rather than by downloading the file.
+
+### 5.4 Device QA (Phase 9) — **NOT TESTED**
 
 No Android emulator or physical device is available in this sandbox, and none can be provisioned
 without the Android SDK. **Compilation success is not functional verification.** Every Phase 9
