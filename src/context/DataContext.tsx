@@ -13,6 +13,7 @@ import {
   FirebaseConfigType,
   DEFAULT_FIREBASE_CONFIG
 } from '../lib/firestoreService';
+import { serverEndpoint, hasConfiguredServer, isNativeApp } from '../lib/serverConfig';
 import {
   AdminAccount,
   AdminPermissions,
@@ -4952,7 +4953,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (isAdms) {
       const startTime = performance.now();
       try {
-        const testUrl = `${window.location.origin}/iclock/cdata?SN=${encodeURIComponent(sn)}`;
+        // Web: current origin. APK: the configured deployment origin, because the
+        // bundled WebView origin (localhost) cannot host the ADMS endpoint.
+        if (isNativeApp() && !hasConfiguredServer()) {
+          return {
+            success: false,
+            status: 'error',
+            message:
+              'This app build has no server address configured, so the ADMS endpoint cannot be reached. Configure VITE_WORKNEST_SERVER_URL when building the APK.'
+          };
+        }
+        const testUrl = `${serverEndpoint('/iclock/cdata')}?SN=${encodeURIComponent(sn)}`;
         const response = await fetch(testUrl, {
           method: 'GET',
           headers: { 'Accept': 'text/plain' }

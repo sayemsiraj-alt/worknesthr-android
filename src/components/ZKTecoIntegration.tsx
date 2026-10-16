@@ -5,6 +5,7 @@ import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/f
 import { db } from '../lib/firestoreService';
 import { ZKTecoPunchTriggerModal } from './ZKTecoPunchTriggerModal';
 import { BiometricDeviceModal, DeleteDeviceConfirmationModal } from './BiometricDeviceModal';
+import { admsWebhookUrl, SERVER_NOT_CONFIGURED_HINT } from '../lib/serverConfig';
 import {
   IconFingerprint, IconCheckCircle, IconRefresh, IconCloud, IconServer,
   IconShield, IconActivity, IconInfo, IconPlus, IconEdit, IconTrash, IconX, IconBuilding
@@ -30,8 +31,11 @@ export function ZKTecoIntegration() {
   const [testingDeviceId, setTestingDeviceId] = useState<string | null>(null);
   const [testFeedback, setTestFeedback] = useState<{ [id: string]: { success: boolean; message: string; latency?: number } }>({});
 
-  // Cloud webhook URL (or local proxy)
-  const webhookUrl = `${window.location.origin}/.netlify/functions/iclock`;
+  // Cloud webhook URL (or local proxy).
+  // On the web this is the current origin; inside the APK the WebView origin is
+  // a bundled localhost, which no ZKTeco device can reach, so the configured
+  // deployment origin is used instead.
+  const webhookUrl = admsWebhookUrl();
 
   // Real-time listener for last 25 biometric punches
   useEffect(() => {
@@ -450,12 +454,13 @@ export function ZKTecoIntegration() {
                 <input
                   type="text"
                   readOnly
-                  value={webhookUrl}
+                  value={webhookUrl || SERVER_NOT_CONFIGURED_HINT}
                   className="flex-1 px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800"
                 />
                 <button
                   onClick={handleCopy}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all"
+                  disabled={!webhookUrl}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition-all"
                 >
                   {copiedUrl ? '✓ Copied' : 'Copy'}
                 </button>

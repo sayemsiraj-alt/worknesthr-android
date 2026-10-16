@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, getDocs, collection, query, where, updateDoc } from 'firebase/firestore';
 import { getFirebaseInstance, getStoredFirebaseConfig, sanitizeForFirestore } from './firestoreService';
+import { serverEndpoint, hasConfiguredServer, isNativeApp } from './serverConfig';
 
 export const auth = getFirebaseInstance().auth;
 
@@ -468,9 +469,14 @@ export async function authenticateAdminUser(
   const masterEmail = DEFAULT_ADMIN_CREDENTIALS.email.toLowerCase();
   const isMasterEmail = cleanEmail === masterEmail;
 
-  // 1. Try Server-Verified Authentication Endpoint (/iclock/auth) first
+  // 1. Try Server-Verified Authentication Endpoint (/iclock/auth) first.
+  //    Relative on the web (unchanged); absolute inside the APK, where the
+  //    bundled WebView has no server origin of its own. If no deployment origin
+  //    is configured for the APK this request fails and the Firebase Auth flow
+  //    in step 3 below authenticates the user directly, as it already does for
+  //    static-only deployments.
   try {
-    const resp = await fetch('/iclock/auth', {
+    const resp = await fetch(serverEndpoint('/iclock/auth'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
@@ -828,9 +834,12 @@ export async function authenticateEmployeeUser(
 
   const { auth: activeAuth, db } = getFirebaseInstance();
 
-  // 1. Primary path: Server-Verified Employee Authentication Endpoint (/iclock/auth)
+  // 1. Primary path: Server-Verified Employee Authentication Endpoint (/iclock/auth).
+  //    Relative on the web (unchanged); absolute inside the APK. When no origin
+  //    is configured the request fails and step 2 below signs the employee in
+  //    directly against Firebase, exactly as it already does for static deployments.
   try {
-    const resp = await fetch('/iclock/auth', {
+    const resp = await fetch(serverEndpoint('/iclock/auth'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
