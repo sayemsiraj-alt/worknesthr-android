@@ -72,8 +72,9 @@ export function AIReportAssistant({ onNavigate }: Props) {
   // Studio Mode Tabs
   const [activeStudioTab, setActiveStudioTab] = useState<'chat' | 'letters' | 'audit'>('chat');
 
-  // Selected Month & Branch Filter for Reports
+  // Selected Date, Month & Branch Filter for Reports
   const [todayStr] = useState(() => getBangladeshTodayStr());
+  const [selectedDate, setSelectedDate] = useState<string>(() => getBangladeshTodayStr());
   const [selectedMonth, setSelectedMonth] = useState(() => getBangladeshTodayStr().slice(0, 7));
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
 
@@ -431,36 +432,181 @@ export function AIReportAssistant({ onNavigate }: Props) {
   // =========================================================================
   // REPORT GENERATOR FUNCTIONS (100% Free & Instant)
   // =========================================================================
-  const buildTodayAttendanceReport = (): { text: string; report: ReportTableData } => {
-    const presentList = employeeAnalytics.filter(a => a.todayStatus === 'present' || a.todayStatus === 'late');
-    const lateToday = employeeAnalytics.filter(a => a.todayStatus === 'late');
-    const leaveToday = employeeAnalytics.filter(a => a.todayStatus === 'on_leave');
-    const absentToday = employeeAnalytics.filter(a => a.todayStatus === 'absent');
+  const buildDailyAttendanceReport = (targetDate?: string): { text: string; report: ReportTableData } => {
+    const theDate = targetDate || selectedDate || todayStr;
+    const isToday = theDate === todayStr;
+
+    let presentCount = 0;
+    let lateCount = 0;
+    let leaveCount = 0;
+    let absentCount = 0;
+    let weekendOffCount = 0;
+
+    const rows: (string | number)[][] = filteredEmployees.map(emp => {
+      const attRecord = cloudAttendance.find(
+        a => (a.employeeId === emp.id || a.employeeId === emp.employeeId) && a.date === theDate
+      );
+      const sched = resolveEmployeeScheduleForDate(emp, theDate, roster, shifts, attRecord?.shiftName);
+      const dateShiftName = resolveEmployeeShiftNameForDate(emp, theDate, attRecord?.shiftName);
+      const isWeekend = Boolean(sched?.isWeekend || sched?.isOff);
+
+      const activeLeave = leaveRequests.find(
+        l =>
+          (l.employeeId === emp.id || l.employeeId === emp.employeeId) &&
+          l.status === 'approved' &&
+          theDate >= l.from &&
+          theDate <= l.to
+      );
+
+      const rawIn = attRecord?.firstPunchIn || attRecord?.checkIn || '-';
+      let rawOut =
+        attRecord?.checkOut && attRecord.checkOut !== '-' && attRecord.checkOut !== rawIn
+          ? String(attRecord.checkOut)
+          : attRecord?.lastPunchOut && attRecord.lastPunchOut !== '-' && attRecord.lastPunchOut !== rawIn
+          ? String(attRecord.lastPunchOut)
+          : '-';
+      if (rawOut === rawIn || attRecord?.totalPunches === 1) rawOut = '-';
+
+      const hasPunch = rawIn !== '-' || rawOut !== '-';
+      let resolvedStatus = '';
+      if (attRecord && (hasPunch || attRecord.status)) {
+        const evalRes = evaluateAttendanceForSchedule(rawIn, rawOut, sched, attRecord, dateShiftName);
+        resolvedStatus = evalRes.status;
+      }
+
+      let finalStatus = 'ABSENT';
+      if (activeLeave) {
+        finalStatus = 'ON LEAVE';
+        leaveCount++;
+      } else if (hasPunch || ['present', 'late', 'half_day'].includes(resolvedStatus)) {
+        if (resolvedStatus === 'late') {
+          finalStatus = 'LATE';
+          lateCount++;
+          presentCount++;
+        } else if (resolvedStatus === 'half_day') {
+          finalStatus = 'HALF DAY';
+          presentCount++;
+        } else {
+          finalStatus = 'PRESENT';
+          presentCount++;
+        }
+      } else if (isWeekend) {
+        finalStatus = 'WEEKEND OFF';
+        weekendOffCount++;
+      } else if (theDate > todayStr) {
+        finalStatus = 'SCHEDULED';
+      } else {
+        finalStatus = 'ABSENT';
+        absentCount++;
+      }
+
+      // Calculate duty duration
+      let durationText = '-';
+      if (rawIn !== '-' && rawOut !== '-') {
+        const isOvernight = Boolean(
+          attRecord?.isOvernight || sched?.isOvernight || (sched && isEveningOrOvernight(sched))
+        );
+        const { durationHours, durationMinutes } = calculateDutyDuration(rawIn, rawOut, isOvernight);
+        if (durationHours > 0 || durationMinutes > 0) {
+          durationText = `${durationHours}h ${durationMinutes}m`;
+        }
+      }
+
+      // Calculate daily OT
+      let otText = '-';
+      if (rawIn !== '-' && rawOut !== '-') {
+        const effShift =
+          sched?.shift ||
+          findShiftByNameOrId(shifts, sched?.shiftName) ||
+          findShiftByNameOrId(shifts, dateShiftName);
+        const isOtAllowed =
+          !sched?.isWeekend &&
+          !sched?.isOff &&
+          sched?.overtimePolicyEnabled !== false &&
+          isShiftOvertimeEnabled(effShift);
+        const isOvernight = Boolean(
+          attRecord?.isOvernight || sched?.isOvernight || (sched && isEveningOrOvernight(sched))
+        );
+        const calcOt = isOtAllowed
+          ? calculateOvertimeHours(String(rawIn), String(rawOut), {
+              ...sched,
+              shift: effShift || sched?.shift,
+              overtimePolicyEnabled: isOtAllowed,
+              isOvernight,
+            })
+          : 0;
+        const otHours = !isOtAllowed
+          ? 0
+          : attRecord?.source === 'admin_edit' && attRecord?.otHours !== undefined
+          ? Number(attRecord.otHours)
+          : calcOt;
+        if (otHours > 0) {
+          otText = `${otHours.toFixed(1)}h`;
+        }
+      }
+
+      return [
+        emp.employeeId,
+        emp.name,
+        emp.designation || 'Staff',
+        emp.department || 'General',
+        emp.branch || 'Head Office',
+        dateShiftName || sched?.shiftName || emp.shift || 'General',
+        rawIn !== '-' ? formatTo12Hour(rawIn) : '-',
+        rawOut !== '-' ? formatTo12Hour(rawOut) : '-',
+        durationText,
+        otText,
+        finalStatus,
+      ];
+    });
+
+    const [tY, tM, tD] = theDate.split('-').map(Number);
+    const dateObj = tY && tM && tD ? new Date(tY, tM - 1, tD) : new Date();
+    const formattedDate = dateObj.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    const summaryText = `📅 **${isToday ? 'আজকের' : formattedDate} তারিখের (${theDate}) নির্দিষ্ট দৈনিক উপস্থিতি রিপোর্ট:**\n` +
+      `• মোট কর্মচারী: ${filteredEmployees.length} জন | উপস্থিতি (Present): ${presentCount} জন\n` +
+      `• অন-টাইম উপস্থিতি: ${Math.max(0, presentCount - lateCount)} জন | আজ লেট (Late): ${lateCount} জন\n` +
+      `• অনুমোদিত ছুটিতে (Leave): ${leaveCount} জন | সাপ্তাহিক বন্ধ (Weekend): ${weekendOffCount} জন\n` +
+      `• অনুপস্থিত / আন-পাঞ্চড (Absent): ${absentCount} জন`;
 
     return {
-      text: `📅 আজকের (${todayStr}) লাইভ অ্যাটেনডেন্স রিপোর্ট তৈরি হয়েছে। মোট ${employeeAnalytics.length} জন কর্মচারীর মধ্যে উপস্থিত (Present) আছেন ${presentList.length} জন (যার মধ্যে আজ লেট করেছেন ${lateToday.length} জন), ছুটিতে আছেন ${leaveToday.length} জন এবং অনুপস্থিত (Absent/Not Punched) ${absentToday.length} জন।`,
+      text: summaryText,
       report: {
-        title: `Today's Live Attendance Report (${todayStr})`,
-        subtitle: `Branch: ${selectedBranchFilter === 'ALL' ? 'All Branches' : selectedBranchFilter} • Total Staff: ${employeeAnalytics.length}`,
+        title: `Daily Attendance Report — ${theDate} ${isToday ? "(Today's Live Report)" : ''}`,
+        subtitle: `Date: ${formattedDate} (${theDate}) • Branch: ${selectedBranchFilter === 'ALL' ? 'All Branches' : selectedBranchFilter} • Total: ${filteredEmployees.length} Staff`,
         kpis: [
-          { label: 'Total Staff', value: `${employeeAnalytics.length}`, color: 'indigo' },
-          { label: 'Present Today', value: `${presentList.length}`, color: 'emerald' },
-          { label: 'Late Today', value: `${lateToday.length}`, color: 'amber' },
-          { label: 'Absent / Unpunched', value: `${absentToday.length}`, color: 'rose' },
+          { label: 'Total Staff', value: `${filteredEmployees.length}`, color: 'indigo' },
+          { label: isToday ? 'Present Today' : 'Present Staff', value: `${presentCount} / ${filteredEmployees.length}`, color: 'emerald' },
+          { label: 'Late Arrival', value: `${lateCount} Staff`, color: 'amber' },
+          { label: 'On Approved Leave', value: `${leaveCount} Staff`, color: 'purple' },
+          { label: 'Absent / Unpunched', value: `${absentCount} Staff`, color: 'rose' },
         ],
-        headers: ['Employee ID', 'Name', 'Designation', 'Department', 'Branch', 'First In', 'Last Out', 'Status'],
-        rows: employeeAnalytics.map(a => [
-          a.emp.employeeId,
-          a.emp.name,
-          a.emp.designation,
-          a.emp.department,
-          a.emp.branch || 'Head Office',
-          a.todayIn !== '-' ? formatTo12Hour(a.todayIn) : '-',
-          a.todayOut !== '-' ? formatTo12Hour(a.todayOut) : '-',
-          a.todayStatus.toUpperCase(),
-        ]),
+        headers: [
+          'Employee ID',
+          'Name',
+          'Designation',
+          'Department',
+          'Branch',
+          'Shift',
+          'First In',
+          'Last Out',
+          'Duration',
+          'OT',
+          'Status',
+        ],
+        rows,
       },
     };
+  };
+
+  const buildTodayAttendanceReport = (): { text: string; report: ReportTableData } => {
+    return buildDailyAttendanceReport(todayStr);
   };
 
   const buildThreeDaysLateReport = (): { text: string; report: ReportTableData } => {
@@ -850,7 +996,60 @@ export function AIReportAssistant({ onNavigate }: Props) {
   const processNaturalLanguageQuery = (rawInput: string): { text: string; report?: ReportTableData } => {
     const q = rawInput.trim().toLowerCase();
 
-    // 1. Check if query mentions a specific employee by Name or Employee ID
+    // 0. Extract explicit date if mentioned in query (e.g. 2026-10-15 or 15-10-2026 or 15/10/2026 or yesterday)
+    const isoDateMatch = q.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    const dmyDateMatch = q.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/);
+    let explicitDate: string | null = null;
+    if (isoDateMatch) {
+      explicitDate = isoDateMatch[1];
+    } else if (dmyDateMatch) {
+      const d = String(dmyDateMatch[1]).padStart(2, '0');
+      const m = String(dmyDateMatch[2]).padStart(2, '0');
+      const y = dmyDateMatch[3];
+      explicitDate = `${y}-${m}-${d}`;
+    } else if (q.includes('yesterday') || q.includes('gotokal') || q.includes('গতকাল')) {
+      const yDate = new Date(`${todayStr}T00:00:00`);
+      yDate.setDate(yDate.getDate() - 1);
+      const yStr = `${yDate.getFullYear()}-${String(yDate.getMonth() + 1).padStart(2, '0')}-${String(yDate.getDate()).padStart(2, '0')}`;
+      explicitDate = yStr;
+    }
+
+    if (explicitDate) {
+      setSelectedDate(explicitDate);
+      if (explicitDate.slice(0, 7) !== selectedMonth) {
+        setSelectedMonth(explicitDate.slice(0, 7));
+      }
+      return buildDailyAttendanceReport(explicitDate);
+    }
+
+    // 1. Check for Today's Attendance / Date Report / Daily attendance
+    // Matches "ajker date er report", "আজকের রিপোর্ট", "আজকের তারিখ", "ajker date", "today's report", etc.
+    const isDailyQuery =
+      q.includes('today') ||
+      q.includes('ajke') ||
+      q.includes('ajker') ||
+      q.includes('ajk') ||
+      q.includes('আজকে') ||
+      q.includes('আজকের') ||
+      q.includes('আজকের ডেট') ||
+      q.includes('আজকের তারিখ') ||
+      q.includes('আজ') ||
+      q.includes('দৈনিক') ||
+      q.includes('daily') ||
+      q.includes('date er report') ||
+      q.includes('date report') ||
+      q.includes('tarikh') ||
+      q.includes('তারিখ') ||
+      (q.includes('attendance') && !q.includes('month') && !q.includes('মাসিক') && !q.includes('payroll') && !q.includes('salary') && !q.includes('বেতন')) ||
+      (q.includes('হাজিরা') && !q.includes('মাসিক') && !q.includes('বেতন')) ||
+      (q.includes('উপস্থিতি') && !q.includes('মাসিক') && !q.includes('বেতন')) ||
+      (q.includes('present') && !q.includes('month') && !q.includes('মাসিক') && !q.includes('top') && !q.includes('best'));
+
+    if (isDailyQuery) {
+      return buildDailyAttendanceReport(selectedDate || todayStr);
+    }
+
+    // 2. Check if query mentions a specific employee by Name or Employee ID
     const matchedEmpAnalytics = employeeAnalytics.find(
       a =>
         q.includes(a.emp.employeeId.toLowerCase()) ||
@@ -865,7 +1064,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
       return buildSingleEmployeeDossier(matchedEmpAnalytics);
     }
 
-    // 2. Check for 3+ Days Late / Warning / Late List
+    // 3. Check for 3+ Days Late / Warning / Late List
     if (
       q.includes('late') ||
       q.includes('lete') ||
@@ -878,19 +1077,6 @@ export function AIReportAssistant({ onNavigate }: Props) {
       q.includes('৩ দিন')
     ) {
       return buildThreeDaysLateReport();
-    }
-
-    // 3. Check for Today's Attendance / Present / Absent Today
-    if (
-      q.includes('today') ||
-      q.includes('ajke') ||
-      q.includes('ajker') ||
-      q.includes('আজকে') ||
-      q.includes('আজকের') ||
-      q.includes('daily') ||
-      (q.includes('present') && !q.includes('month'))
-    ) {
-      return buildTodayAttendanceReport();
     }
 
     // 4. Check for Salary / Payroll / Deduction / Net Pay
@@ -967,8 +1153,21 @@ export function AIReportAssistant({ onNavigate }: Props) {
       return buildMissingCheckoutAuditReport();
     }
 
-    // Default: Full Executive 360° Report
-    return buildExecutiveSummaryReport();
+    // 10. If query explicitly mentions month / executive / 360 summary
+    if (
+      q.includes('month') ||
+      q.includes('মাস') ||
+      q.includes('মাসিক') ||
+      q.includes('executive') ||
+      q.includes('৩৬০') ||
+      q.includes('summary') ||
+      q.includes('সামারি')
+    ) {
+      return buildExecutiveSummaryReport();
+    }
+
+    // Default: Always return Daily Attendance Report for selectedDate / todayStr (not month!)
+    return buildDailyAttendanceReport(selectedDate || todayStr);
   };
 
   // =========================================================================
@@ -994,17 +1193,57 @@ export function AIReportAssistant({ onNavigate }: Props) {
     };
   }, []);
 
-  // Live Default Report shown automatically when chatHistory is empty so there is NEVER any blank space
+  // Live Default Report shown automatically when chatHistory is empty: Defaults to TODAY's Live Attendance Report
   const defaultLiveReportMsg = useMemo<ChatItem>(() => {
-    const execReport = buildExecutiveSummaryReport();
+    const dailyReport = buildDailyAttendanceReport(selectedDate || todayStr);
     return {
-      id: 'live_default_exec_report',
+      id: 'live_default_daily_report',
       sender: 'ai',
-      time: 'Live Now',
-      text: execReport.text,
-      report: execReport.report,
+      time: selectedDate === todayStr ? 'Live Today' : selectedDate,
+      text: dailyReport.text,
+      report: dailyReport.report,
     };
-  }, [employeeAnalytics, selectedMonth, selectedBranchFilter]);
+  }, [cloudAttendance, filteredEmployees, selectedDate, todayStr, roster, shifts, leaveRequests, selectedBranchFilter]);
+
+  // Date Filter Change Handler: Updates selected date, syncs month and prepends date report to chat
+  const handleDateFilterChange = (newDateStr: string) => {
+    if (!newDateStr) return;
+    setSelectedDate(newDateStr);
+    const monthPart = newDateStr.slice(0, 7);
+    if (monthPart !== selectedMonth) {
+      setSelectedMonth(monthPart);
+    }
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isToday = newDateStr === todayStr;
+    const userMsg: ChatItem = {
+      id: `u_${Date.now()}`,
+      sender: 'user',
+      time: nowTime,
+      text: isToday ? 'আজকের তারিখের দৈনিক উপস্থিতি রিপোর্ট দাও' : `${newDateStr} তারিখের দৈনিক উপস্থিতি রিপোর্ট দাও`,
+    };
+    const res = buildDailyAttendanceReport(newDateStr);
+    const aiMsg: ChatItem = {
+      id: `ai_${Date.now() + 1}`,
+      sender: 'ai',
+      time: nowTime,
+      text: res.text,
+      report: res.report,
+    };
+    setChatHistory(prev => [userMsg, aiMsg, ...prev]);
+  };
+
+  // Step Date: Navigate previous / next day easily
+  const handleStepDate = (deltaDays: number) => {
+    const curDateStr = selectedDate || todayStr;
+    const [y, m, d] = curDateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + deltaDays);
+    const nextY = dt.getFullYear();
+    const nextM = String(dt.getMonth() + 1).padStart(2, '0');
+    const nextD = String(dt.getDate()).padStart(2, '0');
+    const nextDateStr = `${nextY}-${nextM}-${nextD}`;
+    handleDateFilterChange(nextDateStr);
+  };
 
   const displayedMessages = useMemo<ChatItem[]>(() => {
     if (chatHistory.length === 0) {
@@ -1521,8 +1760,32 @@ export function AIReportAssistant({ onNavigate }: Props) {
             </p>
           </div>
 
-          {/* Month & Branch Selectors */}
+          {/* Date, Month & Branch Selectors */}
           <div className="flex flex-wrap items-center gap-2 shrink-0 bg-white/10 p-2.5 rounded-2xl border border-white/15">
+            <div>
+              <label className="text-[10px] font-bold uppercase text-indigo-200 block">Report Date (তারিখ)</label>
+              <div className="flex items-center gap-1 mt-0.5">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => {
+                    const newD = e.target.value;
+                    if (newD) handleDateFilterChange(newD);
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-900/90 border border-white/20 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleDateFilterChange(todayStr)}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer transition-all ${
+                    selectedDate === todayStr ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white/10 text-indigo-200 hover:bg-white/20'
+                  }`}
+                  title="View Today's Report"
+                >
+                  Today
+                </button>
+              </div>
+            </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-indigo-200 block">Report Month</label>
               <input
@@ -1628,8 +1891,13 @@ export function AIReportAssistant({ onNavigate }: Props) {
                 {[
                   {
                     icon: '📅',
-                    label: 'আজকের প্রেজেন্ট, লেট ও অ্যাবসেন্ট রিপোর্ট',
-                    prompt: 'আজকের প্রেজেন্ট, লেট ও অ্যাবসেন্ট রিপোর্ট দাও',
+                    label: 'আজকের নির্দিষ্ট দৈনিক উপস্থিতি রিপোর্ট (Today)',
+                    prompt: 'আজকের তারিখের দৈনিক উপস্থিতি রিপোর্ট দাও',
+                  },
+                  {
+                    icon: '📆',
+                    label: 'গতকালকের দৈনিক উপস্থিতি রিপোর্ট (Yesterday)',
+                    prompt: 'গতকালকের উপস্থিতি রিপোর্ট দাও',
                   },
                   {
                     icon: '🚨',
@@ -1732,10 +2000,10 @@ export function AIReportAssistant({ onNavigate }: Props) {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-xs sm:text-sm">
-                    WorkNest AI Report Bot ({formatMonthLabel(selectedMonth)})
+                    WorkNest AI Report Bot ({selectedDate === todayStr ? `Today: ${todayStr}` : `Date: ${selectedDate}`})
                   </h3>
                   <p className="text-[11px] text-emerald-600 font-semibold">
-                    ● Connected to Live Database ({filteredEmployees.length} Staff) — Full Page Live Mode
+                    ● Connected to Live Database ({filteredEmployees.length} Staff) — Daily &amp; Custom Date Filtering
                   </p>
                 </div>
               </div>
@@ -1765,6 +2033,56 @@ export function AIReportAssistant({ onNavigate }: Props) {
               </div>
             </div>
 
+            {/* Prominent AI Chatbot Date Filter & Navigation Toolbar */}
+            <div className="px-4 py-2.5 bg-gradient-to-r from-indigo-50/90 via-violet-50/70 to-slate-50 border-b border-indigo-100/80 flex flex-wrap items-center justify-between gap-2.5 print:hidden">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <span className="text-sm">📅</span>
+                  <span>তারিখ ফিল্টার (Date Filter):</span>
+                </span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => {
+                    if (e.target.value) handleDateFilterChange(e.target.value);
+                  }}
+                  className="px-2.5 py-1 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <span className="text-[11px] font-semibold text-slate-500">
+                  {selectedDate === todayStr ? '(আজকের লাইভ ডেটা)' : `(${selectedDate})`}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleStepDate(-1)}
+                  className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-xs font-bold text-slate-700 hover:text-indigo-800 cursor-pointer shadow-2xs transition-all"
+                  title="Previous Day"
+                >
+                  ◄ আগের দিন
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDateFilterChange(todayStr)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                    selectedDate === todayStr
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white hover:bg-indigo-50 border border-slate-200 text-slate-700'
+                  }`}
+                >
+                  আজকে (Today)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStepDate(1)}
+                  className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-xs font-bold text-slate-700 hover:text-indigo-800 cursor-pointer shadow-2xs transition-all"
+                  title="Next Day"
+                >
+                  পরের দিন ►
+                </button>
+              </div>
+            </div>
+
             {/* Top AI Command & Voice Input Bar — Immediately Visible Without Scrolling */}
             <form
               onSubmit={e => {
@@ -1790,7 +2108,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                   type="text"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
-                  placeholder="এখানে লিখুন (যেমন: আজকের প্রেজেন্ট, ৩ দিন লেট লিস্ট, স্যালারি রিপোর্ট, অথবা কর্মচারীর নাম)..."
+                  placeholder="এখানে লিখুন (যেমন: আজকের রিপোর্ট, 2026-10-15 এর রিপোর্ট, ৩ দিন লেট লিস্ট, স্যালারি শিট, বা কর্মচারীর নাম)..."
                   className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                 />
               </div>
@@ -1870,6 +2188,55 @@ export function AIReportAssistant({ onNavigate }: Props) {
                             </button>
                           </div>
                         </div>
+
+                        {/* Interactive Date Switcher directly inside Daily Report */}
+                        {(msg.report.title.includes('Daily Attendance') || msg.report.title.includes("Today's")) && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-indigo-50/80 border border-indigo-200/80 rounded-xl print:hidden">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs font-bold text-indigo-950 flex items-center space-x-1">
+                                <span>📅</span>
+                                <span>অন্যান্য তারিখের রিপোর্ট দেখুন (Select Date):</span>
+                              </span>
+                              <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={e => {
+                                  if (e.target.value) handleDateFilterChange(e.target.value);
+                                }}
+                                className="px-2.5 py-1 bg-white border border-indigo-200 rounded-lg text-xs font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleStepDate(-1)}
+                                className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-800 cursor-pointer shadow-2xs transition-all"
+                                title="Previous Day"
+                              >
+                                ◄ আগের দিন
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDateFilterChange(todayStr)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                                  selectedDate === todayStr
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-800'
+                                }`}
+                              >
+                                আজকে (Today)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleStepDate(1)}
+                                className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-800 cursor-pointer shadow-2xs transition-all"
+                                title="Next Day"
+                              >
+                                পরের দিন ►
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* KPI Mini Cards */}
                         {msg.report.kpis && msg.report.kpis.length > 0 && (
@@ -1956,16 +2323,40 @@ export function AIReportAssistant({ onNavigate }: Props) {
                               ) : (
                                 msg.report.rows.map((row, rIdx) => (
                                   <tr key={rIdx} className="hover:bg-slate-50">
-                                    {row.map((cell, cIdx) => (
-                                      <td
-                                        key={cIdx}
-                                        className={`px-3 py-2.5 whitespace-nowrap ${
-                                          cIdx === 0 ? 'font-mono font-bold text-indigo-700' : 'text-slate-700'
-                                        }`}
-                                      >
-                                        {cell}
-                                      </td>
-                                    ))}
+                                    {row.map((cell, cIdx) => {
+                                      const isStatusCol = cIdx === row.length - 1;
+                                      const cellStr = String(cell);
+                                      return (
+                                        <td
+                                          key={cIdx}
+                                          className={`px-3 py-2.5 whitespace-nowrap ${
+                                            cIdx === 0 ? 'font-mono font-bold text-indigo-700' : 'text-slate-700'
+                                          }`}
+                                        >
+                                          {isStatusCol && ['PRESENT', 'LATE', 'ABSENT', 'ON LEAVE', 'WEEKEND OFF', 'HALF DAY', 'SCHEDULED'].includes(cellStr) ? (
+                                            <span
+                                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${
+                                                cellStr === 'PRESENT'
+                                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                                  : cellStr === 'LATE'
+                                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                                  : cellStr === 'ON LEAVE'
+                                                  ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                                                  : cellStr === 'WEEKEND OFF'
+                                                  ? 'bg-slate-100 text-slate-600 border border-slate-300'
+                                                  : cellStr === 'HALF DAY'
+                                                  ? 'bg-orange-100 text-orange-800 border border-orange-300'
+                                                  : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                              }`}
+                                            >
+                                              {cellStr}
+                                            </span>
+                                          ) : (
+                                            cell
+                                          )}
+                                        </td>
+                                      );
+                                    })}
                                   </tr>
                                 ))
                               )}
