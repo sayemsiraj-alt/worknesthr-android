@@ -324,3 +324,54 @@ android/.gitignore            keystore rules enabled
 - The original logo PNG is preserved unmodified; only derived Android icon resources were generated.
 - ZKTeco device communication remains **server-side** (Netlify `iclock.js`). No direct
   device-to-phone ADMS connection was introduced.
+
+---
+
+## 9. Rebuild from updated source (main `00632f6`)
+
+Two components were updated on `main` and the APK was rebuilt from them.
+
+### 9.1 Source reconciliation
+
+`main` gained five commits after the branch point (`29aec60`), including a
+GitHub-upload workaround that briefly **deleted** both components (`f25a799`,
+`eea8d3c`) before re-adding them. The net change (`git diff 29aec60 00632f6`)
+touches exactly the two files, so nothing else on `main` moved.
+
+The branch was brought up to date with a **merge** (`e618bf9`, parents `04a7080` +
+`00632f6`) — no reset, no force-push, no discarded commits. The only textual
+overlap was `EmployeePanel.tsx`, which this branch had edited for the Android
+Back button and safe-area inset; git auto-merged it and both sets of edits are
+present and verified.
+
+### 9.2 What the two updates actually change
+
+| File | Change |
+|---|---|
+| `EmployeePanel.tsx` | Overtime is rounded to one decimal and monthly totals are accumulated in **minutes** (`Math.round(h*60)` then `/60`) instead of summing float hours, removing floating-point drift; the UI renders `N hrs` / `0 hrs`. |
+| `AIReportAssistant.tsx` | New `buildDailyAttendanceReport(targetDate)` for **date-specific** daily attendance, with `WEEKEND OFF` / `SCHEDULED` / `ON LEAVE` / `HALF DAY` resolution, duty-duration and per-day overtime; `buildTodayAttendanceReport()` now delegates to it. New date picker + `−1 day / Today / +1 day` stepper (`handleDateFilterChange`, `handleStepDate`). |
+
+Both were reviewed for hook rules, stale state, cleanup, unhandled rejections,
+Android WebView compatibility and Back-button interaction. `handleStepDate` uses
+local-time date arithmetic (no UTC drift), `setChatHistory` uses a functional
+update, and no new timers, subscriptions or listeners were introduced. No
+Android-specific defect was found in the updated code, so **neither component was
+modified** — the author's fixes are used exactly as uploaded.
+
+### 9.3 Build verification
+
+| Check | Result |
+|---|---|
+| `bun install --frozen-lockfile` | ✅ 353 packages, lockfile honoured |
+| `bun run lint` (`tsc --noEmit`) | ✅ 0 errors |
+| `bun run build` | ✅ `dist/` produced |
+| `bunx cap sync android` | ✅ assets copied |
+| Bundled JS contains both updates | ✅ `index-D70JZS4P.js`, 3,261,446 bytes — identical hash to the local build and to the file inside the APK |
+| `scripts/generate_launcher_icons.py --verify-only` | ✅ all 15 launcher assets centred |
+| CI run `39027624049` on `e618bf9` | ✅ success, 22 steps |
+
+The APK uploaded by that run contains `assets/public/assets/index-D70JZS4P.js`,
+i.e. the same compiled bundle that was inspected locally, so the two updated
+components are demonstrably inside the shipped artifact.
+
+Device QA remains **NOT TESTED** — no emulator or physical device is available.
