@@ -447,9 +447,10 @@ export function EmployeePanel() {
         const calcOt = isOtAllowed
           ? calculateOvertimeHours(checkIn, checkOut, { ...sched, shift: effShift || sched?.shift, overtimePolicyEnabled: isOtAllowed, isOvernight })
           : 0;
-        const otHours = !isOtAllowed
+        const rawOt = !isOtAllowed
           ? 0
           : (r.source === 'admin_edit' && r.otHours !== undefined ? Number(r.otHours) : calcOt);
+        const otHours = Math.round(Number(rawOt || 0) * 10) / 10;
 
         map.set(r.date, {
           ...existing,
@@ -478,7 +479,7 @@ export function EmployeePanel() {
     let presentCount = 0;
     let lateCount = 0;
     let absentCount = 0;
-    let otTotal = 0;
+    let otTotalMinutes = 0;
 
     monthlyAttendanceRecords.forEach(r => {
       if (r.status === 'present') presentCount++;
@@ -486,8 +487,12 @@ export function EmployeePanel() {
         presentCount++;
         lateCount++;
       } else if (r.status === 'absent') absentCount++;
-      if (r.otHours) otTotal += Number(r.otHours) || 0;
+      if (r.otHours) {
+        otTotalMinutes += Math.round((Number(r.otHours) || 0) * 60);
+      }
     });
+
+    const otTotal = Number((otTotalMinutes / 60).toFixed(1));
 
     return { presentCount, lateCount, absentCount, otTotal };
   }, [monthlyAttendanceRecords]);
@@ -3453,7 +3458,9 @@ export function EmployeePanel() {
               </div>
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
                 <span className="text-[11px] text-slate-400 block uppercase font-bold">Overtime</span>
-                <span className="text-xl sm:text-2xl font-black text-indigo-600">{monthlyStats.otTotal}h</span>
+                <span className="text-xl sm:text-2xl font-black text-indigo-600">
+                  {monthlyStats.otTotal > 0 ? `${Number(monthlyStats.otTotal.toFixed(1))} hrs` : '0 hrs'}
+                </span>
               </div>
             </div>
 
@@ -3497,7 +3504,7 @@ export function EmployeePanel() {
                             )}
                           </td>
                           <td className="px-4 py-3 font-semibold text-slate-600">
-                            {rec.otHours ? `${rec.otHours} hrs` : '-'}
+                            {rec.otHours && Number(rec.otHours) > 0 ? `${Number(Number(rec.otHours).toFixed(1))} hrs` : '-'}
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -4258,7 +4265,7 @@ export function EmployeePanel() {
                   </div>
                   <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Overtime So Far</span>
-                    <span className="text-base font-black text-purple-600">{monthAttendanceStats.autoOvertimeHours}h</span>
+                    <span className="text-base font-black text-purple-600">{Number(monthAttendanceStats.autoOvertimeHours.toFixed(1))} hrs</span>
                   </div>
                 </div>
 
