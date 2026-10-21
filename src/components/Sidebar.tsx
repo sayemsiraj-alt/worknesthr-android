@@ -19,7 +19,6 @@ type Props = {
 
 const menuItems: { id: Page; label: string; Icon: any; group: string; badge?: string }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: IconDashboard, group: 'Overview' },
-  { id: 'marketing_ads', label: 'FB Ads & Posters', Icon: IconFlame, group: 'Overview', badge: 'ADS' },
   { id: 'analytics', label: 'HR Analytics', Icon: IconActivity, group: 'Overview' },
   { id: 'ai_assistant', label: 'AI Report Bot', Icon: IconSparkles, group: 'Overview' },
   { id: 'branches', label: 'Branch Offices', Icon: IconBuilding, group: 'Overview' },
