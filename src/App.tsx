@@ -32,10 +32,12 @@ import { WorkforcePlanning } from './components/WorkforcePlanning';
 import { EmployeeEngagement } from './components/EmployeeEngagement';
 import { HRAnalyticsDashboard } from './components/HRAnalyticsDashboard';
 import { EnterpriseSecurityCenter } from './components/EnterpriseSecurityCenter';
+import { MarketingAdsStudio } from './components/MarketingAdsStudio';
 import { IconDashboard, IconAttendance, IconUsers, IconWallet, IconMenu } from './components/Icons';
 
 export type Page =
   | 'dashboard'
+  | 'marketing_ads'
   | 'ai_assistant'
   | 'enterprise_security'
   | 'workforce_planning'
@@ -166,6 +168,7 @@ function AppContent() {
 
   const pageTitles: Record<Page, string> = {
     dashboard: 'Dashboard',
+    marketing_ads: 'Facebook Ads & Marketing Studio (বিজ্ঞাপন ও পোস্টার স্টুডিও)',
     ai_assistant: 'Smart AI HR Assistant & Report Studio',
     enterprise_security: 'Enterprise Security, RBAC, MFA & Audit Logs',
     workforce_planning: 'Workforce Planning & Org Chart',
@@ -199,6 +202,8 @@ function AppContent() {
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard onNavigate={handleNavigate} />;
+      case 'marketing_ads':
+        return <MarketingAdsStudio onNavigate={handleNavigate} />;
       case 'ai_assistant':
         return <AIReportAssistant onNavigate={handleNavigate} />;
       case 'enterprise_security':

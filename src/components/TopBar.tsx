@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { Page } from '../App';
 import { IconSearch, IconBell, IconMessages, IconMenu, IconChevronDown, IconLogout, IconUser, IconSettings, IconCloud, IconBuilding } from './Icons';
+import { Avatar } from './Avatar';
 
 type Props = {
   onMenuClick: () => void;
@@ -301,13 +302,13 @@ export function TopBar({ onMenuClick, currentPageTitle, onNavigate }: Props) {
                           onClick={() => handleSelectResult('employee', emp.employeeId || emp.name)}
                           className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-indigo-50/70 transition-colors flex items-center space-x-3 cursor-pointer group"
                         >
-                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-200/50 overflow-hidden">
-                            {emp.avatar && (emp.avatar.startsWith('data:image/') || emp.avatar.startsWith('http')) ? (
-                              <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
-                            ) : (
-                              emp.avatar || emp.name.charAt(0)
-                            )}
-                          </div>
+                          <Avatar
+                            avatar={emp.avatar}
+                            name={emp.name}
+                            sizeClass="w-8 h-8"
+                            textClass="text-xs font-bold"
+                            roundedClass="rounded-lg"
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center space-x-2">
                               <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-700 truncate">{emp.name}</span>
@@ -507,9 +508,13 @@ export function TopBar({ onMenuClick, currentPageTitle, onNavigate }: Props) {
                       className={`w-full text-left p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors ${m.unread ? 'bg-emerald-50/30' : ''}`}
                     >
                       <div className="flex items-start space-x-3">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center text-sm shrink-0">
-                          {m.fromAvatar}
-                        </div>
+                        <Avatar
+                          avatar={m.fromAvatar}
+                          name={m.from}
+                          sizeClass="w-8 h-8"
+                          textClass="text-xs font-bold"
+                          roundedClass="rounded-lg"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
                             <p className="text-[12px] font-semibold text-slate-900">{m.from}</p>
@@ -542,13 +547,14 @@ export function TopBar({ onMenuClick, currentPageTitle, onNavigate }: Props) {
               className="flex items-center space-x-2 p-1 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <div className="relative">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-semibold text-white shadow-xs overflow-hidden">
-                  {currentUser?.avatar && (currentUser.avatar.startsWith('data:image/') || currentUser.avatar.startsWith('http')) ? (
-                    <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" />
-                  ) : (
-                    currentUser?.avatar || '👨‍💼'
-                  )}
-                </div>
+                <Avatar
+                  avatar={currentUser?.avatar}
+                  name={currentUser?.name}
+                  sizeClass="w-8 h-8"
+                  textClass="text-sm font-semibold text-white"
+                  roundedClass="rounded-xl"
+                  bgClass="bg-gradient-to-br from-indigo-500 to-violet-600 text-white"
+                />
                 <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white"></span>
               </div>
               <div className="hidden md:block text-left">
@@ -711,13 +717,13 @@ export function TopBar({ onMenuClick, currentPageTitle, onNavigate }: Props) {
                         onClick={() => handleSelectResult('employee', emp.employeeId || emp.name)}
                         className="w-full text-left p-2 rounded-xl hover:bg-indigo-50 flex items-center space-x-3 active:bg-indigo-100 cursor-pointer"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0 overflow-hidden">
-                          {emp.avatar && (emp.avatar.startsWith('data:image/') || emp.avatar.startsWith('http')) ? (
-                            <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
-                          ) : (
-                            emp.avatar || emp.name.charAt(0)
-                          )}
-                        </div>
+                        <Avatar
+                          avatar={emp.avatar}
+                          name={emp.name}
+                          sizeClass="w-8 h-8"
+                          textClass="text-xs font-bold"
+                          roundedClass="rounded-lg"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-slate-900 truncate">{emp.name}</p>
                           <p className="text-[11px] text-slate-500 truncate">{emp.employeeId} • {emp.department}</p>

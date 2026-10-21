@@ -11,7 +11,8 @@ import {
   getBangladeshTodayStr,
   normalizeTimeStr,
   resolveEmployeeScheduleForDate,
-  isEveningOrOvernight
+  isEveningOrOvernight,
+  isEmployeeEligibleForAttendance
 } from '../utils/attendanceScheduleEngine';
 import {
   IconUsers,
@@ -45,7 +46,8 @@ const HIDDEN_PANELS_STORAGE_KEY = 'hr_dashboard_hidden_panels_v1';
 export function Dashboard({ onNavigate }: Props) {
   const {
     employees, allEmployees, departments, leaveRequests, roster, shifts,
-    branches, activeBranch, setActiveBranch, allDevices, getEmployeeBranch, getDeviceBranch
+    branches, activeBranch, setActiveBranch, allDevices, getEmployeeBranch, getDeviceBranch,
+    offboardingRecords
   } = useData();
   const { currentCompanyId } = useTenant();
   const { t } = useSettings();
@@ -277,11 +279,21 @@ export function Dashboard({ onNavigate }: Props) {
     });
   }, [employees, todayStr, firestoreTodayAttendance, firestoreWeeklyAttendance, roster, shifts]);
 
+  const activeStaffToday = useMemo(() => {
+    return employees.filter(emp => {
+      const offRecord = offboardingRecords?.find(
+        r => (emp.id && r.employeeId === emp.id) || (emp.employeeId && (r.employeeCode === emp.employeeId || r.employeeId === emp.employeeId))
+      );
+      return isEmployeeEligibleForAttendance(emp, todayStr, false, offRecord);
+    });
+  }, [employees, todayStr, offboardingRecords]);
+
   const totalMachinePunchesToday = verifiedPresentEmployees.length;
   const realPresentCount = verifiedPresentEmployees.length;
-  const attendanceRate = totalEmployees > 0 ? Math.round((realPresentCount / totalEmployees) * 100) : 0;
+  const activeStaffCount = activeStaffToday.length;
+  const attendanceRate = activeStaffCount > 0 ? Math.round((realPresentCount / activeStaffCount) * 100) : 0;
 
-  // Detailed Today Attendance Breakdown for Donut Chart (mutually exclusive buckets summing to totalEmployees)
+  // Detailed Today Attendance Breakdown for Donut Chart (mutually exclusive buckets summing to activeStaffCount)
   const todayAttendanceBreakdown = useMemo(() => {
     const presentIds = new Set(verifiedPresentEmployees.map(e => e.id));
     let leaveCount = 0;
@@ -290,6 +302,13 @@ export function Dashboard({ onNavigate }: Props) {
 
     employees.forEach(emp => {
       if (presentIds.has(emp.id)) return;
+
+      const offRecord = offboardingRecords?.find(
+        r => (emp.id && r.employeeId === emp.id) || (emp.employeeId && (r.employeeCode === emp.employeeId || r.employeeId === emp.employeeId))
+      );
+      if (!isEmployeeEligibleForAttendance(emp, todayStr, false, offRecord)) {
+        return;
+      }
 
       const empCode = String(emp.employeeId || '').toLowerCase().trim();
       const empId = String(emp.id || '').toLowerCase().trim();

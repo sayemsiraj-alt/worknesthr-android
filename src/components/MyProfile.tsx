@@ -1,4 +1,5 @@
 import { useData } from '../context/DataContext';
+import { Avatar } from './Avatar';
 
 export function MyProfile() {
   const { currentUser } = useData();
@@ -12,9 +13,13 @@ export function MyProfile() {
 
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 space-y-6">
         <div className="flex items-center space-x-4">
-          <div className="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-md">
-            {currentUser?.avatar || '👨‍💼'}
-          </div>
+          <Avatar
+            avatar={currentUser?.avatar}
+            name={currentUser?.name}
+            sizeClass="w-16 h-16"
+            textClass="text-2xl font-bold"
+            roundedClass="rounded-2xl"
+          />
           <div>
             <h3 className="text-xl font-bold text-slate-900">{currentUser?.name || 'Administrator'}</h3>
             <p className="text-xs text-slate-500">{currentUser?.email} • Role: {currentUser?.role}</p>

@@ -11,6 +11,7 @@ import {
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, reconfigureFirebase } from '../lib/firestoreService';
 import { CustomerBillingSection } from './CustomerBillingSection';
+import { Avatar } from './Avatar';
 
 type SettingsTab =
   | 'company'
@@ -2574,9 +2575,14 @@ export function AccountSettings() {
                         >
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                             <div className="flex items-start space-x-3.5">
-                              <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 border border-slate-200 flex items-center justify-center text-lg shadow-2xs shrink-0">
-                                {admin.avatar || '👨‍💼'}
-                              </div>
+                              <Avatar
+                                avatar={admin.avatar}
+                                name={admin.name}
+                                sizeClass="w-11 h-11"
+                                textClass="text-lg font-bold"
+                                roundedClass="rounded-2xl"
+                                bgClass="bg-slate-100 text-slate-800"
+                              />
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-extrabold text-slate-900 text-sm">{admin.name}</span>

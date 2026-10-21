@@ -575,6 +575,21 @@ html[data-theme="royal"] .border-slate-200\/80 {
 }
 
 /* ========================================================================= */
+/* SUPPRESS NETLIFY EDGE-INJECTED BADGE / IFRAME                            */
+/* ========================================================================= */
+iframe[src*="netlify.com"],
+iframe[title*="Netlify"],
+iframe[id*="netlify"],
+div[class*="netlify-badge"],
+#netlify-badge,
+.netlify-badge {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ========================================================================= */
 /* UNIVERSAL AUDIT-READY HIGH-PRECISION PRINT MEDIA STYLES                  */
 /* ========================================================================= */
 @media print {

@@ -231,7 +231,8 @@ export function HRAnalyticsDashboard() {
         }
       >();
 
-      const activeEmps = empList.filter((e) => e.status !== 'inactive' && !e.accessTerminated);
+      const nonActiveStatuses = ['inactive', 'suspended', 'terminated', 'resigned'];
+      const activeEmps = empList.filter((e) => !nonActiveStatuses.includes((e.status || 'active').toLowerCase()) && !e.accessTerminated);
 
       activeEmps.forEach((emp) => {
         const empCode = String(emp.employeeId || '').trim().toLowerCase();

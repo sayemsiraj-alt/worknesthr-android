@@ -1189,7 +1189,7 @@ export function RosterDuty() {
                   {empItem.avatar && (empItem.avatar.startsWith('data:image/') || empItem.avatar.startsWith('http://') || empItem.avatar.startsWith('https://')) ? (
                     <img src={empItem.avatar} alt={empItem.name} className="w-4 h-4 rounded-full object-cover shrink-0" />
                   ) : (
-                    <span>{empItem.avatar || '👤'}</span>
+                    <span>{empItem.avatar && empItem.avatar.length <= 4 ? empItem.avatar : (empItem.name ? empItem.name.charAt(0).toUpperCase() : '👤')}</span>
                   )}
                   <span>{empItem.name}</span>
                 </button>
