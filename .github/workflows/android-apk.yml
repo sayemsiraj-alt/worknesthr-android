@@ -1,0 +1,244 @@
+name: Android APK
+
+# Builds the WorkNest HR Android APK.
+#
+# The application source is unchanged by this workflow: it runs the repository's
+# own scripts (`lint` -> `vite build` -> `cap sync android` -> Gradle), so the
+# artifact contains exactly the bundled web build of the existing app plus the
+# native Capacitor shell.
+#
+# Repository configuration used by this workflow:
+#   vars.VITE_WORKNEST_SERVER_URL  (optional) deployment origin, e.g. https://your-site.netlify.app
+#   secrets.ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD  (optional) enable a signed release APK
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  android:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      # GitHub-hosted runners already ship the Android SDK; a third-party setup
+      # action is unnecessary (and failed here), so use the preinstalled one and
+      # add only the packages this project needs.
+      - name: Locate Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "Using Android SDK at: $SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          for d in cmdline-tools/latest/bin cmdline-tools/bin platform-tools; do
+            if [ -d "$SDK/$d" ]; then echo "$SDK/$d" >> "$GITHUB_PATH"; fi
+          done
+          ls "$SDK" || true
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --version
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          # Accepting licences lets Gradle fetch any additional component it needs.
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          echo "Platforms:"; ls "$ANDROID_HOME/platforms" || true
+          echo "Build tools:"; ls "$ANDROID_HOME/build-tools" || true
+
+      - name: Install dependencies (from lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Type check (project's own lint script)
+        run: bun run lint
+
+      - name: Build web assets
+        env:
+          # Optional: compiled into the APK so server endpoints and ADMS webhook
+          # URLs resolve to the real deployment instead of the WebView origin.
+          VITE_WORKNEST_SERVER_URL: ${{ vars.VITE_WORKNEST_SERVER_URL }}
+        run: bun run build
+
+      - name: Verify the web bundle was produced
+        run: |
+          test -f dist/index.html || { echo "::error::dist/index.html missing"; exit 1; }
+          test -d dist/assets || { echo "::error::dist/assets missing"; exit 1; }
+          echo "Bundled assets:"; ls -la dist dist/assets
+
+      - name: Sync web build into the Android project
+        run: bunx cap sync android
+
+      - name: Verify launcher icons and app name are packaged
+        run: |
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png
+          test -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          grep -q '<string name="app_name">WorkNest HR</string>' android/app/src/main/res/values/strings.xml
+          grep -q 'applicationId "app.worknesthr"' android/app/build.gradle
+          test -f android/app/src/main/assets/public/index.html
+          echo "Package, app name and launcher assets verified."
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Detect optional signing material
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No signing secrets configured - debug APK only."
+          fi
+
+      - name: Build signed release APK
+        id: release
+        if: steps.signing.outputs.available == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Decode the keystore outside the repository tree so it is never committed.
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/worknest-release.jks"
+          cd android
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/worknest-release.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f "$RUNNER_TEMP/worknest-release.jks"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the corrected launcher icon inside the built APK
+        run: |
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          python3 -m pip install --quiet pillow
+          {
+            echo "### Launcher icon alignment inside the built APK"
+            echo
+            echo '```'
+          } > icon-report.md
+          # pipefail (set above) propagates a failed assertion out of this step
+          python3 - "$APK" <<'PYEOF' | tee -a icon-report.md
+          import math, subprocess, sys, zipfile, io
+          from PIL import Image
+
+          apk = sys.argv[1]
+          VISIBLE = 16
+          print("Checking launcher icons as packaged in the APK:")
+          zf = zipfile.ZipFile(apk)
+          names = [n for n in zf.namelist() if "mipmap" in n and n.endswith(".png")]
+          targets = [n for n in names if "ic_launcher_foreground" in n]
+          if not targets:
+              print("ERROR: no launcher foreground icons found in the APK"); sys.exit(1)
+
+          failures = 0
+          for name in sorted(targets):
+              im = Image.open(io.BytesIO(zf.read(name))).convert("RGBA")
+              cs = im.size[0]
+              mask = im.getchannel("A").point(lambda v: 255 if v > VISIBLE else 0)
+              bbox = mask.getbbox()
+              px = mask.load()
+              cx = cy = (cs - 1) / 2
+              worst = 0.0
+              for y in range(cs):
+                  for x in range(cs):
+                      if px[x, y]:
+                          d = math.hypot(x - cx, y - cy)
+                          if d > worst:
+                              worst = d
+              offx = (bbox[0] + bbox[2]) / 2 - cs / 2
+              offy = (bbox[1] + bbox[3]) / 2 - cs / 2
+              worst_dp = worst * 108 / cs
+              centred = abs(offx) < 1 and abs(offy) < 1
+              safe = worst_dp <= 36.0
+              if not (centred and safe):
+                  failures += 1
+              print(f"  {name:52s} {cs:>3}px  offset=({offx:+.1f},{offy:+.1f})  "
+                    f"max radius={worst_dp:.1f}dp  {'OK' if centred and safe else 'FAIL'}")
+          if failures:
+              print(f"ERROR: {failures} icon(s) inside the APK are off-centre or mask-unsafe")
+              sys.exit(1)
+          print("All launcher icons in the APK are centred and inside the 36dp safe circle.")
+          PYEOF
+          echo '```' >> icon-report.md
+          cat icon-report.md
+          cat icon-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Inspect built APK and publish verification report
+        # Run even if the icon verification failed, so the report shows why.
+        if: always()
+        run: |
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          test -n "$APK" || { echo "::error::No debug APK produced"; exit 1; }
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | head -n 1)
+
+          {
+            echo "### WorkNest HR — APK verification"
+            echo
+            echo '```'
+            echo "file:   $APK"
+            echo "size:   $(du -h "$APK" | cut -f1)"
+            echo "sha256: $(sha256sum "$APK" | cut -d' ' -f1)"
+            echo
+            echo "--- aapt2 dump badging ---"
+            "$AAPT" dump badging "$APK" | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission" || true
+            echo
+            echo "--- bundled web assets inside the APK ---"
+            unzip -l "$APK" | grep -E "assets/public/(index.html|assets/)" | head -n 8 || true
+            echo "bundled public files: $(unzip -l "$APK" | grep -c 'assets/public/')"
+            echo
+            echo "--- launcher icon resources inside the APK ---"
+            unzip -l "$APK" | grep -E "mipmap.*ic_launcher" | head -n 8 || true
+            echo '```'
+          } | tee apk-report.md
+
+          # append the in-APK icon alignment results so one comment shows everything
+          if [ -f icon-report.md ]; then cat icon-report.md >> apk-report.md; fi
+
+          cat apk-report.md >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            gh pr comment "$GITHUB_REF_NAME" --body-file apk-report.md \
+              || gh pr comment "$(gh pr list --head "$GITHUB_HEAD_REF" --json number --jq '.[0].number')" --body-file apk-report.md \
+              || echo "::notice::Could not post APK report comment"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: worknest-hr-apk
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk

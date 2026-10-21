@@ -1,3 +1,5 @@
+import { printHtmlDocument } from './nativePrint';
+
 export interface ReportFilter {
   label: string;
   value: string;
@@ -589,8 +591,15 @@ function escapeHtml(str: string): string {
 
 /**
  * Prints HTML via an isolated hidden iframe with cross-browser resilience.
+ *
+ * Inside the Android APK the WebView implements no print API (an iframe's
+ * `contentWindow.print()` is a silent no-op), so the document is handed to
+ * Android's print framework instead. Browser behaviour is unchanged.
  */
-export function printViaIframe(htmlContent: string): Promise<boolean> {
+export async function printViaIframe(htmlContent: string): Promise<boolean> {
+  if (await printHtmlDocument(htmlContent, 'WorkNest HR Report')) {
+    return true;
+  }
   return new Promise((resolve) => {
     try {
       const existing = document.getElementById('worknest-report-print-iframe');

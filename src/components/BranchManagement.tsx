@@ -14,6 +14,7 @@ import {
   IconCloud,
   IconActivity,
 } from './Icons';
+import { admsWebhookUrl, SERVER_NOT_CONFIGURED_HINT } from '../lib/serverConfig';
 
 type Props = {
   onNavigate?: (page: Page) => void;
@@ -81,7 +82,8 @@ export function BranchManagement({ onNavigate }: Props) {
     status: 'active',
   });
 
-  const webhookUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/.netlify/functions/iclock`;
+  // Web origin on the web build; configured deployment origin inside the APK.
+  const webhookUrl = admsWebhookUrl();
 
   const openCreateBranchModal = () => {
     setEditingBranch(null);
@@ -613,12 +615,13 @@ export function BranchManagement({ onNavigate }: Props) {
             <input
               type="text"
               readOnly
-              value={webhookUrl}
+              value={webhookUrl || SERVER_NOT_CONFIGURED_HINT}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-700 w-64 sm:w-80"
             />
             <button
               onClick={handleCopyWebhook}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0"
+              disabled={!webhookUrl}
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0"
             >
               {copiedWebhook ? '✓ Copied' : 'Copy Server URL'}
             </button>

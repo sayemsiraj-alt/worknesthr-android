@@ -16,6 +16,7 @@ import {
   calculateHourlyOtRate,
   evaluateAttendanceForSchedule,
 } from '../utils/attendanceScheduleEngine';
+import { printHtmlDocument } from '../utils/nativePrint';
 
 export type MonthlyPayrollRecord = {
   employeeId: string;
@@ -1248,11 +1249,18 @@ export function Payroll() {
 </html>`;
   };
 
-  // Robust print handling: attempts iframe first, falls back to popup or native print
-  const handlePrintPayslip = () => {
+  // Robust print handling: attempts the native (APK) print dialog first, then
+  // iframe, then popup.
+  const handlePrintPayslip = async () => {
     if (!payslipEmployee) return;
     const record = getPayrollRecord(payslipEmployee);
     const html = generatePayslipPrintHtml(payslipEmployee, record);
+
+    // Inside the APK the WebView implements neither iframe printing nor
+    // window.open(), so hand the payslip to Android's print framework.
+    if (await printHtmlDocument(html, `Payslip - ${payslipEmployee.name}`)) {
+      return;
+    }
 
     try {
       const existing = document.getElementById('worknest-print-iframe');
@@ -1296,10 +1304,16 @@ export function Payroll() {
   };
 
   // Open clean standalone print window
-  const handleOpenCleanPrintWindow = () => {
+  const handleOpenCleanPrintWindow = async () => {
     if (!payslipEmployee) return;
     const record = getPayrollRecord(payslipEmployee);
     const html = generatePayslipPrintHtml(payslipEmployee, record);
+
+    // On Android a popup cannot be opened; go straight to the native print dialog.
+    if (await printHtmlDocument(html, `Payslip - ${payslipEmployee.name}`)) {
+      return;
+    }
+
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const printWindow = window.open(url, '_blank', 'width=880,height=960,toolbar=0,scrollbars=1,status=0');
