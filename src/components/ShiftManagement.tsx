@@ -1249,7 +1249,7 @@ export function ShiftManagement() {
                           {employee.avatar && (employee.avatar.startsWith('data:image/') || employee.avatar.startsWith('http://') || employee.avatar.startsWith('https://')) ? (
                             <img src={employee.avatar} alt={employee.name} className="w-full h-full object-cover" />
                           ) : (
-                            employee.avatar || employee.name.slice(0, 2).toUpperCase()
+                            employee.avatar && employee.avatar.length <= 4 ? employee.avatar : (employee.name ? employee.name.slice(0, 2).toUpperCase() : '👤')
                           )}
                         </div>
                         <div>

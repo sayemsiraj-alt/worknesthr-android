@@ -1,10 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useData, Employee } from '../context/DataContext';
 import { getBangladeshTodayStr } from '../utils/attendanceScheduleEngine';
-
-function isImageAvatar(avatar?: string): boolean {
-  return Boolean(avatar && (avatar.startsWith('data:image/') || avatar.startsWith('http://') || avatar.startsWith('https://')));
-}
+import { Avatar, isImageAvatar } from './Avatar';
 
 function compressProfileImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -135,6 +132,7 @@ export function EmployeeManagement() {
     password: 'password123',
     joinDate: getBangladeshTodayStr(),
     status: 'active',
+    lastWorkingDay: '',
     avatar: '👨‍💼',
     address: '',
     emergencyContact: '',
@@ -249,6 +247,7 @@ export function EmployeeManagement() {
       password: 'password123',
       joinDate: new Date().toISOString().split('T')[0],
       status: 'active',
+      lastWorkingDay: '',
       avatar: '👨‍💼',
       address: '',
       emergencyContact: '',
@@ -309,6 +308,7 @@ export function EmployeeManagement() {
       password: emp.password || 'password123',
       joinDate: emp.joinDate || new Date().toISOString().split('T')[0],
       status: emp.status || 'active',
+      lastWorkingDay: emp.lastWorkingDay || '',
       avatar: emp.avatar || '👨‍💼',
       address: emp.address || '',
       emergencyContact: emp.emergencyContact || '',
@@ -330,8 +330,15 @@ export function EmployeeManagement() {
     const food = Number(formData.food) || 0;
 
     const selectedBranchObj = branches.find(b => b.name === formData.branch);
+    const nonActiveStatuses = ['inactive', 'suspended', 'terminated', 'resigned'];
+    const isNonActive = nonActiveStatuses.includes(formData.status);
+    const effectiveLastWorkingDay = isNonActive
+      ? (formData.lastWorkingDay || editing?.lastWorkingDay || getBangladeshTodayStr())
+      : undefined;
+
     const payload: Omit<Employee, 'id'> = {
       ...formData,
+      lastWorkingDay: effectiveLastWorkingDay,
       branch: formData.branch || 'Main Head Office (Dhaka)',
       branchId: selectedBranchObj?.id || formData.branchId || 'BR-001',
       grossSalary: gross,
@@ -566,13 +573,12 @@ export function EmployeeManagement() {
                     <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg shadow-sm overflow-hidden border border-slate-200/80 shrink-0">
-                            {isImageAvatar(emp.avatar) ? (
-                              <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
-                            ) : (
-                              emp.avatar || '👨‍💼'
-                            )}
-                          </div>
+                          <Avatar
+                            avatar={emp.avatar}
+                            name={emp.name}
+                            sizeClass="w-10 h-10"
+                            roundedClass="rounded-xl"
+                          />
                           <div>
                             <div className="font-semibold text-slate-800 whitespace-nowrap">{emp.name}</div>
                             <div className="text-xs text-slate-400 whitespace-nowrap">{emp.email || emp.phone}</div>
@@ -652,9 +658,14 @@ export function EmployeeManagement() {
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 rounded-xl bg-indigo-50 text-2xl flex items-center justify-center">
-                  {formData.avatar || '👨‍💼'}
-                </div>
+                <Avatar
+                  avatar={formData.avatar}
+                  name={formData.name}
+                  sizeClass="w-12 h-12"
+                  textClass="text-2xl"
+                  roundedClass="rounded-xl"
+                  bgClass="bg-indigo-50 text-indigo-700"
+                />
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">
                     {editing ? `Edit ${editing.name}` : 'Add New Employee'}
@@ -861,14 +872,44 @@ export function EmployeeManagement() {
                       <label className="text-xs font-semibold text-slate-700">Employment Status</label>
                       <select
                         value={formData.status}
-                        onChange={e => setFormData({ ...formData, status: e.target.value as any })}
+                        onChange={e => {
+                          const nextStatus = e.target.value as any;
+                          setFormData(prev => ({
+                            ...prev,
+                            status: nextStatus,
+                            lastWorkingDay: nextStatus !== 'active' && !prev.lastWorkingDay ? getBangladeshTodayStr() : prev.lastWorkingDay,
+                          }));
+                        }}
                         className="w-full mt-1 px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="on_leave">On Leave</option>
+                        <option value="active">Active (সক্রিয়)</option>
+                        <option value="inactive">Inactive (নিষ্ক্রিয়)</option>
+                        <option value="suspended">Suspended (স্থগিত)</option>
+                        <option value="terminated">Terminated (বরখাস্ত)</option>
+                        <option value="on_leave">On Leave (ছুটিতে)</option>
                       </select>
                     </div>
+
+                    {formData.status !== 'active' && formData.status !== 'on_leave' && (
+                      <div className="col-span-1 md:col-span-3 p-3 bg-amber-50/70 border border-amber-200 rounded-xl animate-fade-in">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <label className="text-xs font-bold text-amber-900 block">
+                              Last Working Day / Exit Date (শেষ কর্মদিবস)
+                            </label>
+                            <p className="text-[11px] text-amber-700 mt-0.5">
+                              এই তারিখের পর থেকে কর্মীকে আর দৈনিক হাজিরায় Absent বা তালিকায় দেখানো হবে না। অতীতের সব রেকর্ড সংরক্ষিত থাকবে।
+                            </p>
+                          </div>
+                          <input
+                            type="date"
+                            value={formData.lastWorkingDay || ''}
+                            onChange={e => setFormData({ ...formData, lastWorkingDay: e.target.value })}
+                            className="px-3 py-1.5 border border-amber-300 bg-white rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none shrink-0"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Reporting Manager & Manager Self-Service Role */}
@@ -916,13 +957,14 @@ export function EmployeeManagement() {
                   <div className="p-4 bg-indigo-50/50 border-2 border-dashed border-indigo-200 rounded-2xl space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center space-x-3.5">
-                        <div className="w-16 h-16 rounded-2xl bg-white border-2 border-indigo-200 shadow-xs flex items-center justify-center text-3xl overflow-hidden shrink-0">
-                          {isImageAvatar(formData.avatar) ? (
-                            <img src={formData.avatar} alt={formData.name || 'Profile Preview'} className="w-full h-full object-cover" />
-                          ) : (
-                            <span>{formData.avatar || '👨‍💼'}</span>
-                          )}
-                        </div>
+                        <Avatar
+                          avatar={formData.avatar}
+                          name={formData.name || 'Profile Preview'}
+                          sizeClass="w-16 h-16"
+                          textClass="text-3xl font-bold"
+                          roundedClass="rounded-2xl"
+                          bgClass="bg-white border-2 border-indigo-200 text-indigo-700"
+                        />
                         <div>
                           <label className="text-xs sm:text-sm font-extrabold text-indigo-950 block">
                             📷 Employee Profile Picture (প্রোফাইল ছবি আপলোড করুন)
@@ -1391,13 +1433,13 @@ export function EmployeeManagement() {
           <div className="bg-white rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-down border border-slate-200">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center space-x-3.5">
-                <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-2xl shadow-sm overflow-hidden shrink-0">
-                  {isImageAvatar(viewingEmployee.avatar) ? (
-                    <img src={viewingEmployee.avatar} alt={viewingEmployee.name} className="w-full h-full object-cover" />
-                  ) : (
-                    viewingEmployee.avatar || '👨‍💼'
-                  )}
-                </div>
+                <Avatar
+                  avatar={viewingEmployee.avatar}
+                  name={viewingEmployee.name}
+                  sizeClass="w-14 h-14"
+                  textClass="text-2xl font-bold"
+                  roundedClass="rounded-2xl"
+                />
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">{viewingEmployee.name}</h3>
                   <p className="text-xs text-slate-500">

@@ -1921,7 +1921,7 @@ export function Payroll() {
                             {emp.avatar && (emp.avatar.startsWith('data:image/') || emp.avatar.startsWith('http://') || emp.avatar.startsWith('https://')) ? (
                               <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
                             ) : (
-                              emp.avatar || emp.name.charAt(0)
+                              emp.avatar && emp.avatar.length <= 4 ? emp.avatar : (emp.name ? emp.name.charAt(0).toUpperCase() : '👤')
                             )}
                           </div>
                           <div>

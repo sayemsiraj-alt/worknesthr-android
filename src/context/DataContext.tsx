@@ -149,6 +149,9 @@ export type Employee = {
   managerName?: string;
   isManager?: boolean;
   dateOfBirth?: string;
+  lastWorkingDay?: string;
+  exitDate?: string;
+  terminationDate?: string;
   accessTerminated?: boolean;
   accessTerminatedAt?: string;
 };
@@ -6609,6 +6612,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       afterValue: { exitType: payload.exitType, lastWorkingDay: payload.lastWorkingDay, reason: payload.reason },
     });
 
+    // Sync lastWorkingDay and termination status directly to employee profile
+    try {
+      await updateEmployee(emp.id, {
+        lastWorkingDay: payload.lastWorkingDay,
+        ...(payload.exitType === 'termination' ? { status: 'inactive' } : {}),
+      });
+    } catch (syncErr) {
+      console.warn('Could not sync lastWorkingDay to employee:', syncErr);
+    }
+
     return { success: true, record };
   };
 
@@ -6868,6 +6881,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       status: 'inactive',
       accessTerminated: true,
       accessTerminatedAt: nowIso,
+      lastWorkingDay: rec.lastWorkingDay || nowIso.split('T')[0],
     });
 
     // 2. Update OffboardingRecord

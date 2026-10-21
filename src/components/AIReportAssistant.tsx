@@ -21,6 +21,7 @@ import {
   isEveningOrOvernight,
   getBangladeshTodayStr,
   getEmployeeShiftWorkingHours,
+  isEmployeeEligibleForAttendance,
 } from '../utils/attendanceScheduleEngine';
 import { Page } from '../App';
 
@@ -66,6 +67,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     sendMessage,
     addNotification,
     currentUser,
+    offboardingRecords,
   } = useData();
   const { currentCompanyId, currentCompany } = useTenant();
 
@@ -442,7 +444,20 @@ export function AIReportAssistant({ onNavigate }: Props) {
     let absentCount = 0;
     let weekendOffCount = 0;
 
-    const rows: (string | number)[][] = filteredEmployees.map(emp => {
+    const eligibleEmployees = filteredEmployees.filter(emp => {
+      const attRecord = cloudAttendance.find(
+        a => (a.employeeId === emp.id || a.employeeId === emp.employeeId) && a.date === theDate
+      );
+      const rawIn = attRecord?.firstPunchIn || attRecord?.checkIn || '-';
+      const rawOut = attRecord?.checkOut && attRecord.checkOut !== '-' ? attRecord.checkOut : attRecord?.lastPunchOut || '-';
+      const hasActualPunch = (rawIn !== '-' || (rawOut !== '-' && rawOut !== rawIn));
+      const offRecord = offboardingRecords?.find(
+        r => (emp.id && r.employeeId === emp.id) || (emp.employeeId && (r.employeeCode === emp.employeeId || r.employeeId === emp.employeeId))
+      );
+      return isEmployeeEligibleForAttendance(emp, theDate, hasActualPunch, offRecord);
+    });
+
+    const rows: (string | number)[][] = eligibleEmployees.map(emp => {
       const attRecord = cloudAttendance.find(
         a => (a.employeeId === emp.id || a.employeeId === emp.employeeId) && a.date === theDate
       );

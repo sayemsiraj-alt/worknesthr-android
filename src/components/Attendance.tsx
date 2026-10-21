@@ -7,6 +7,7 @@ import { ZKTecoPunchTriggerModal } from './ZKTecoPunchTriggerModal';
 import { BiometricCollectModal } from './BiometricCollectModal';
 import { AttendanceImportModal } from './AttendanceImportModal';
 import { formatTo12Hour } from '../utils/timeFormat';
+import { Avatar } from './Avatar';
 import {
   resolveEmployeeScheduleForDate,
   resolveEmployeeShiftNameForDate,
@@ -18,7 +19,8 @@ import {
   isShiftOvernight,
   isEveningOrOvernight,
   normalizeTimeStr,
-  getBangladeshTodayStr
+  getBangladeshTodayStr,
+  isEmployeeEligibleForAttendance
 } from '../utils/attendanceScheduleEngine';
 import {
   IconFingerprint,
@@ -32,12 +34,14 @@ import {
 export function Attendance() {
   const {
     employees, allEmployees, shifts, roster, devices, addNotification,
-    attendanceRequests, updateAttendanceRequestStatus, branches, activeBranch, setActiveBranch, getEmployeeBranch
+    attendanceRequests, updateAttendanceRequestStatus, branches, activeBranch, setActiveBranch, getEmployeeBranch,
+    offboardingRecords
   } = useData();
   const { currentCompanyId } = useTenant();
   const activeTenant = currentCompanyId || 'default';
   const [todayStr, setTodayStr] = useState<string>(() => getBangladeshTodayStr());
   const [selectedDate, setSelectedDate] = useState<string>(() => getBangladeshTodayStr());
+  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
   const [search, setSearch] = useState<string>(() => {
     try {
       const q = sessionStorage.getItem('worknest_global_search_query');
@@ -674,6 +678,59 @@ export function Attendance() {
       };
     });
 
+    const hasActualRecord = Boolean(
+      hasPunch ||
+      (match && (match.status === 'present' || match.status === 'late' || (match.source && match.source !== 'none'))) ||
+      validTodayPunches.length > 0 ||
+      todayPunchObjects.length > 0
+    );
+
+    const offRecord = offboardingRecords?.find(
+      r => (emp.id && r.employeeId === emp.id) || (emp.employeeId && (r.employeeCode === emp.employeeId || r.employeeId === emp.employeeId))
+    );
+
+    const isEligible = isEmployeeEligibleForAttendance(emp, selectedDate, hasActualRecord, offRecord);
+
+    if (!isEligible) {
+      if (!showInactiveEmployees) {
+        return null;
+      }
+      return {
+        ...emp,
+        date: selectedDate,
+        checkIn: '-',
+        checkOut: '-',
+        firstPunchIn: '-',
+        lastPunchOut: '-',
+        status: 'inactive' as any,
+        isLateExcused: false,
+        lateWaived: false,
+        otHours: 0,
+        overtimePolicyEnabled: false,
+        totalHours: 0,
+        workHours: 0,
+        workDurationMinutes: 0,
+        source: 'none',
+        verificationType: 'none',
+        verificationLabel: 'Inactive / Offboarded',
+        deviceName: '-',
+        deviceSerialNumber: '-',
+        detailedPunches: [],
+        shiftName: 'Inactive / Offboarded',
+        shiftStart: '--:--',
+        shiftEnd: '--:--',
+        shift: null,
+        isOvernight: false,
+        isWeekend: false,
+        isOff: true,
+        totalRequiredHours: 0,
+        allPunches: [],
+        docId: `${emp.employeeId || emp.id}_${selectedDate}`,
+        checkInPhoto: null,
+        checkOutPhoto: null,
+      };
+    }
+
     return {
       ...emp,
       date: selectedDate,
@@ -708,7 +765,7 @@ export function Attendance() {
       checkInPhoto: resolvedCheckInPhoto,
       checkOutPhoto: resolvedCheckOutPhoto
     };
-  });
+  }).filter(Boolean) as any[];
 
   const filtered = processedAttendance.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -973,8 +1030,10 @@ export function Attendance() {
             <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${statusFilter === 'all' ? 'text-indigo-100' : 'text-slate-500'}`}>Total Staff</span>
             <IconUsers size={18} className={statusFilter === 'all' ? 'text-white' : 'text-indigo-600'} />
           </div>
-          <div className="text-2xl sm:text-3xl font-black mt-1.5">{employees.length}</div>
-          <div className={`text-[10px] sm:text-xs mt-0.5 truncate ${statusFilter === 'all' ? 'text-indigo-100' : 'text-slate-400'}`}>All employees</div>
+          <div className="text-2xl sm:text-3xl font-black mt-1.5">{processedAttendance.length}</div>
+          <div className={`text-[10px] sm:text-xs mt-0.5 truncate ${statusFilter === 'all' ? 'text-indigo-100' : 'text-slate-400'}`}>
+            Active Staff ({processedAttendance.length})
+          </div>
         </button>
 
         <button
@@ -1077,6 +1136,16 @@ export function Attendance() {
               Today's Live View
             </span>
           )}
+          {/* Include Inactive Staff Toggle */}
+          <label className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-pointer select-none transition-colors">
+            <input
+              type="checkbox"
+              checked={showInactiveEmployees}
+              onChange={(e) => setShowInactiveEmployees(e.target.checked)}
+              className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+            />
+            <span>Include Inactive / Offboarded</span>
+          </label>
         </div>
         <div className="relative w-full md:w-80">
           <IconSearch size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1124,13 +1193,13 @@ export function Attendance() {
                     {/* Employee Info */}
                     <td className="py-2.5 px-3 whitespace-nowrap">
                       <div className="flex items-center space-x-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-lg flex-shrink-0 shadow-2xs overflow-hidden">
-                          {row.avatar && (row.avatar.startsWith('data:image/') || row.avatar.startsWith('http://') || row.avatar.startsWith('https://')) ? (
-                            <img src={row.avatar} alt={row.name} className="w-full h-full object-cover" />
-                          ) : (
-                            row.avatar || '👤'
-                          )}
-                        </div>
+                        <Avatar
+                          avatar={row.avatar}
+                          name={row.name}
+                          sizeClass="w-9 h-9"
+                          textClass="text-sm font-bold"
+                          roundedClass="rounded-xl"
+                        />
                         <div className="min-w-0 leading-tight">
                           <p className="font-bold text-slate-900 text-xs sm:text-[13px] whitespace-nowrap">
                             {row.name}
@@ -1314,6 +1383,12 @@ export function Attendance() {
                         <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                           <span>Absent</span>
+                        </span>
+                      )}
+                      {row.status === 'inactive' && (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-150 bg-slate-100 text-slate-600 border border-slate-300 whitespace-nowrap">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                          <span>Inactive / Offboarded</span>
                         </span>
                       )}
                     </td>

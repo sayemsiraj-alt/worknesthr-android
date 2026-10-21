@@ -1251,4 +1251,70 @@ export function evaluateAttendanceForSchedule(
   };
 }
 
+/**
+ * Determines whether an employee is eligible / active for daily attendance tracking on a target date.
+ * Enforces business rules:
+ * 1. If an employee has an actual punch or attendance record on targetDate: ALWAYS TRUE (preserves historical data).
+ * 2. If targetDate is strictly before employee's joinDate: FALSE (cannot be absent before joining).
+ * 3. If employee is inactive / suspended / terminated / resigned:
+ *    - If an explicit lastWorkingDay is specified (on employee or offboarding record):
+ *      Eligible only if targetDate <= lastWorkingDay.
+ *    - If targetDate > lastWorkingDay: FALSE (no longer active, will not show or be marked absent).
+ *    - If no explicit lastWorkingDay, but status !== 'active':
+ *      Not eligible on or after the deactivation date (or today/future dates without real punch).
+ * 4. If employee is active:
+ *    - If lastWorkingDay is set and targetDate > lastWorkingDay: FALSE.
+ *    - Otherwise: TRUE.
+ */
+export function isEmployeeEligibleForAttendance(
+  emp: {
+    id?: string;
+    employeeId?: string;
+    status?: string;
+    joinDate?: string;
+    lastWorkingDay?: string;
+    accessTerminated?: boolean;
+    accessTerminatedAt?: string;
+  },
+  targetDate: string,
+  hasActualRecord: boolean = false,
+  offboardingRecord?: { lastWorkingDay?: string } | null
+): boolean {
+  // 1. If there is an actual punch / record on this date in the system, ALWAYS include to preserve history
+  if (hasActualRecord) return true;
+
+  // 2. Cannot have unrecorded attendance before joining
+  if (emp.joinDate && targetDate < emp.joinDate) {
+    return false;
+  }
+
+  // Authoritative last working day if any
+  const lwd =
+    emp.lastWorkingDay ||
+    offboardingRecord?.lastWorkingDay ||
+    (emp.accessTerminatedAt ? emp.accessTerminatedAt.split('T')[0] : null);
+
+  // If last working day is known, targetDate must not be strictly after lastWorkingDay
+  if (lwd && targetDate > lwd) {
+    return false;
+  }
+
+  // If marked inactive, suspended, terminated, resigned, or accessTerminated
+  const nonActiveStatuses = ['inactive', 'suspended', 'terminated', 'resigned'];
+  const isNonActive = Boolean(
+    (emp.status && nonActiveStatuses.includes(emp.status.toLowerCase())) ||
+    emp.accessTerminated
+  );
+
+  if (isNonActive) {
+    // If no explicit lastWorkingDay was recorded, but they are inactive:
+    // They are not active for today or any date without a real punch record!
+    if (!lwd) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 

@@ -23,7 +23,9 @@ import {
   getEmployeeShiftWorkingHours,
   calculateHourlyOtRate,
   evaluateAttendanceForSchedule,
+  isEmployeeEligibleForAttendance,
 } from '../utils/attendanceScheduleEngine';
+import { Avatar } from './Avatar';
 
 type ReportModule =
   | 'attendance'
@@ -54,6 +56,7 @@ export function Reports() {
     recruitmentJobs,
     candidates,
     devices,
+    offboardingRecords,
   } = useData();
   const { currentCompanyId, currentCompany } = useTenant();
   const activeTenant = currentCompanyId || 'default';
@@ -359,7 +362,25 @@ export function Reports() {
 
     if (dateMode === 'day') {
       // Comprehensive Daily Audit Register for all staff on selectedDate
-      records = employees.map((emp) => {
+      records = employees
+        .filter((emp) => {
+          const empId = String(emp.employeeId || emp.id || '').toLowerCase().trim();
+          const empMainId = String(emp.id || '').toLowerCase().trim();
+          const hasPunch = firestoreAttendance.some((r) => {
+            if (r.date !== selectedDate) return false;
+            const rEmpId = String(r.employeeId || r.employeeCode || '').toLowerCase().trim();
+            return (
+              rEmpId === empId ||
+              rEmpId === empMainId ||
+              (r.employeeName && r.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase())
+            );
+          });
+          const offRecord = offboardingRecords?.find(
+            (o: any) => o.employeeId === emp.id || o.employeeId === emp.employeeId
+          );
+          return isEmployeeEligibleForAttendance(emp, selectedDate, hasPunch, offRecord);
+        })
+        .map((emp) => {
         const empId = String(emp.employeeId || emp.id || '').toLowerCase().trim();
         const empMainId = String(emp.id || '').toLowerCase().trim();
         const rec = firestoreAttendance.find((r) => {
@@ -3426,11 +3447,13 @@ export function Reports() {
                       </td>
                       <td className="py-3 whitespace-nowrap">
                         <div className="font-bold text-slate-900 flex items-center space-x-2">
-                          {emp.avatar && (emp.avatar.startsWith('data:image/') || emp.avatar.startsWith('http://') || emp.avatar.startsWith('https://')) ? (
-                            <img src={emp.avatar} alt={emp.name} className="w-6 h-6 rounded-lg object-cover shrink-0" />
-                          ) : (
-                            <span className="text-base">{emp.avatar || '👤'}</span>
-                          )}
+                          <Avatar
+                            avatar={emp.avatar}
+                            name={emp.name}
+                            sizeClass="w-6 h-6"
+                            roundedClass="rounded-lg"
+                            textClass="text-xs"
+                          />
                           <span>{emp.name}</span>
                         </div>
                       </td>
@@ -4537,13 +4560,13 @@ export function Reports() {
               <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                   <div className="flex items-start sm:items-center space-x-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-2xl font-black shadow-md shrink-0 overflow-hidden">
-                      {individualDossierData.employee.avatar && (individualDossierData.employee.avatar.startsWith('data:image/') || individualDossierData.employee.avatar.startsWith('http://') || individualDossierData.employee.avatar.startsWith('https://')) ? (
-                        <img src={individualDossierData.employee.avatar} alt={individualDossierData.employee.name} className="w-full h-full object-cover" />
-                      ) : (
-                        individualDossierData.employee.avatar || '👨‍💼'
-                      )}
-                    </div>
+                    <Avatar
+                      avatar={individualDossierData.employee.avatar}
+                      name={individualDossierData.employee.name}
+                      sizeClass="w-16 h-16"
+                      textClass="text-2xl font-black"
+                      roundedClass="rounded-2xl"
+                    />
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-black text-slate-900 tracking-tight">

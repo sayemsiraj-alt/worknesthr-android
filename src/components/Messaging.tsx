@@ -1,6 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useData, Message, Employee } from '../context/DataContext';
 
+import { Avatar, isImageAvatar } from './Avatar';
+
+function renderAvatar(avatar?: string, name?: string, sizeClass = 'w-9 h-9', textClass = 'text-sm') {
+  return (
+    <Avatar
+      avatar={avatar}
+      name={name}
+      sizeClass={sizeClass}
+      textClass={textClass}
+    />
+  );
+}
+
 export function Messaging() {
   const { messages, sendMessage, markMessageRead, deleteMessage, currentUser, employees } = useData();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(messages[0]?.id || null);
@@ -232,9 +245,14 @@ export function Messaging() {
                       isSelected ? 'bg-indigo-50/80 border-l-4 border-indigo-600' : 'hover:bg-slate-50'
                     } ${m.unread ? 'bg-indigo-50/30 font-semibold' : ''}`}
                   >
-                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center text-sm font-bold shrink-0 shadow-xs">
-                      {m.fromAvatar || '👤'}
-                    </div>
+                    {renderAvatar(
+                      m.fromEmployeeId && m.fromEmployeeId !== 'admin'
+                        ? (employees.find(e => e.id === m.fromEmployeeId || e.employeeId === m.fromEmployeeId)?.avatar || m.fromAvatar)
+                        : m.fromAvatar,
+                      m.from,
+                      'w-9 h-9',
+                      'text-sm'
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <span className={`text-xs truncate ${m.unread ? 'font-bold text-slate-900' : 'text-slate-700'}`}>
@@ -284,9 +302,14 @@ export function Messaging() {
                   >
                     ← Back
                   </button>
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-bold shrink-0">
-                    {activeMessage.fromAvatar || '👤'}
-                  </div>
+                  {renderAvatar(
+                    activeMessage.fromEmployeeId && activeMessage.fromEmployeeId !== 'admin'
+                      ? (employees.find(e => e.id === activeMessage.fromEmployeeId || e.employeeId === activeMessage.fromEmployeeId)?.avatar || activeMessage.fromAvatar)
+                      : activeMessage.fromAvatar,
+                    activeMessage.from,
+                    'w-10 h-10',
+                    'text-base'
+                  )}
                   <div className="min-w-0">
                     <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                       {activeMessage.subject}
@@ -325,6 +348,17 @@ export function Messaging() {
                       className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                     >
                       <div className="flex items-center space-x-2 mb-1 px-1">
+                        <Avatar
+                          avatar={
+                            msg.fromEmployeeId && msg.fromEmployeeId !== 'admin'
+                              ? (employees.find(e => e.id === msg.fromEmployeeId || e.employeeId === msg.fromEmployeeId)?.avatar || msg.fromAvatar)
+                              : (currentUser?.avatar || msg.fromAvatar)
+                          }
+                          name={msg.from}
+                          sizeClass="w-5 h-5"
+                          textClass="text-[10px]"
+                          roundedClass="rounded-md"
+                        />
                         <span className="text-xs font-bold text-slate-700">{msg.from}</span>
                         <span className="text-[10px] text-slate-400">{msg.time}</span>
                       </div>

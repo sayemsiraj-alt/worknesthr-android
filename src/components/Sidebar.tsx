@@ -2,6 +2,7 @@ import { Page } from '../App';
 import { useData } from '../context/DataContext';
 import { useTenant } from '../context/TenantContext';
 import { useSettings } from '../context/SettingsContext';
+import { Avatar } from './Avatar';
 import {
   IconDashboard, IconUsers, IconBuilding, IconShift, IconRoster,
   IconAttendance, IconLeave, IconWallet, IconUserPlus, IconFingerprint,
@@ -18,6 +19,7 @@ type Props = {
 
 const menuItems: { id: Page; label: string; Icon: any; group: string; badge?: string }[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: IconDashboard, group: 'Overview' },
+  { id: 'marketing_ads', label: 'FB Ads & Posters', Icon: IconFlame, group: 'Overview', badge: 'ADS' },
   { id: 'analytics', label: 'HR Analytics', Icon: IconActivity, group: 'Overview' },
   { id: 'ai_assistant', label: 'AI Report Bot', Icon: IconSparkles, group: 'Overview' },
   { id: 'branches', label: 'Branch Offices', Icon: IconBuilding, group: 'Overview' },
@@ -202,13 +204,14 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle }: Props) {
           {currentUser && (
             <div className="flex items-center space-x-2.5 px-2.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06]">
               <div className="relative">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-semibold text-white shadow-md overflow-hidden">
-                  {currentUser.avatar && (currentUser.avatar.startsWith('data:image/') || currentUser.avatar.startsWith('http')) ? (
-                    <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" />
-                  ) : (
-                    currentUser.avatar || '👨‍💼'
-                  )}
-                </div>
+                <Avatar
+                  avatar={currentUser.avatar}
+                  name={currentUser.name}
+                  sizeClass="w-9 h-9"
+                  textClass="text-sm font-semibold text-white"
+                  roundedClass="rounded-xl"
+                  bgClass="bg-gradient-to-br from-indigo-500 to-violet-600 text-white"
+                />
                 <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-950"></span>
               </div>
               <div className="flex-1 min-w-0">
@@ -327,13 +330,15 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle }: Props) {
             {currentUser && (
               <div className="flex items-center space-x-2.5 px-2.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-all group">
                 <div className="relative">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-semibold text-white shadow-md ring-1 ring-white/20 overflow-hidden">
-                    {currentUser.avatar && (currentUser.avatar.startsWith('data:image/') || currentUser.avatar.startsWith('http')) ? (
-                      <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" />
-                    ) : (
-                      currentUser.avatar || '👨‍💼'
-                    )}
-                  </div>
+                  <Avatar
+                    avatar={currentUser.avatar}
+                    name={currentUser.name}
+                    sizeClass="w-9 h-9"
+                    textClass="text-sm font-semibold text-white"
+                    roundedClass="rounded-xl"
+                    bgClass="bg-gradient-to-br from-indigo-500 to-violet-600 text-white"
+                    className="ring-1 ring-white/20"
+                  />
                   <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-950 shadow-xs"></span>
                 </div>
                 <div className="flex-1 min-w-0">

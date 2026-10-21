@@ -1984,10 +1984,10 @@ export function EmployeePanel() {
           <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center space-x-2.5">
             <div className="relative shrink-0">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-semibold text-white shadow-md overflow-hidden">
-                {currentEmployee.avatar && (currentEmployee.avatar.startsWith('data:image/') || currentEmployee.avatar.startsWith('http')) ? (
+                {currentEmployee.avatar && (currentEmployee.avatar.startsWith('data:image/') || currentEmployee.avatar.startsWith('http') || currentEmployee.avatar.startsWith('blob:')) ? (
                   <img src={currentEmployee.avatar} alt={currentEmployee.name} className="w-full h-full object-cover" />
                 ) : (
-                  currentEmployee.avatar || '👨‍💼'
+                  currentEmployee.avatar && currentEmployee.avatar.length <= 4 ? currentEmployee.avatar : (currentEmployee.name ? currentEmployee.name.charAt(0).toUpperCase() : '👨‍💼')
                 )}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-950"></span>
@@ -2135,10 +2135,10 @@ export function EmployeePanel() {
           <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center space-x-2.5">
             <div className="relative shrink-0">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-semibold text-white shadow-md overflow-hidden">
-                {currentEmployee.avatar && (currentEmployee.avatar.startsWith('data:image/') || currentEmployee.avatar.startsWith('http')) ? (
+                {currentEmployee.avatar && (currentEmployee.avatar.startsWith('data:image/') || currentEmployee.avatar.startsWith('http') || currentEmployee.avatar.startsWith('blob:')) ? (
                   <img src={currentEmployee.avatar} alt={currentEmployee.name} className="w-full h-full object-cover" />
                 ) : (
-                  currentEmployee.avatar || '👨‍💼'
+                  currentEmployee.avatar && currentEmployee.avatar.length <= 4 ? currentEmployee.avatar : (currentEmployee.name ? currentEmployee.name.charAt(0).toUpperCase() : '👨‍💼')
                 )}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-950"></span>
