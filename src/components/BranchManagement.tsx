@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useData, Branch } from '../context/DataContext';
 import { Page } from '../App';
 import { BiometricDeviceModal } from './BiometricDeviceModal';
+import { BranchQRModal } from './BranchQRModal';
 import {
   IconBuilding,
   IconServer,
@@ -13,6 +14,8 @@ import {
   IconCheck,
   IconCloud,
   IconActivity,
+  IconQrCode,
+  IconMapPin,
 } from './Icons';
 import { admsWebhookUrl, SERVER_NOT_CONFIGURED_HINT } from '../lib/serverConfig';
 
@@ -33,6 +36,30 @@ const QUICK_BRANCH_PRESETS: Array<{
   { name: 'Gazipur Factory Branch', code: 'BR-GZP', city: 'Gazipur', address: 'Tongi Industrial Area, Gazipur', type: 'factory' },
   { name: 'Khulna Branch', code: 'BR-KHL', city: 'Khulna', address: 'KDA Avenue, Khulna', type: 'branch' },
   { name: 'Rajshahi Branch', code: 'BR-RAJ', city: 'Rajshahi', address: 'Shaheb Bazar, Rajshahi', type: 'branch' },
+];
+
+export const BANGLADESH_LOCATION_PRESETS: Array<{
+  label: string;
+  lat: number;
+  lng: number;
+}> = [
+  { label: '🏛️ Dhaka - Motijheel / Dilkusha (Commercial Hub)', lat: 23.7333, lng: 90.4178 },
+  { label: '🏢 Dhaka - Gulshan 1 & 2 / Banani (Corporate Hub)', lat: 23.7925, lng: 90.4078 },
+  { label: '✈️ Dhaka - Uttara (North Hub)', lat: 23.8759, lng: 90.3795 },
+  { label: '🌳 Dhaka - Dhanmondi', lat: 23.7461, lng: 90.3742 },
+  { label: '🏬 Dhaka - Mirpur 10 / 11', lat: 23.8041, lng: 90.3667 },
+  { label: '🏭 Dhaka - Tejgaon Industrial Area', lat: 23.7686, lng: 90.3986 },
+  { label: '🏭 Gazipur - Tongi / Boardbazar / Joydebpur', lat: 23.9999, lng: 90.4203 },
+  { label: '🏭 Savar / Ashulia (DEPZ & Garments)', lat: 23.8583, lng: 90.2667 },
+  { label: '🚢 Narayanganj - River Port & City', lat: 23.6238, lng: 90.5000 },
+  { label: '🚢 Chattogram - Agrabad Commercial Area / Port', lat: 22.3275, lng: 91.8123 },
+  { label: '🌿 Sylhet - Zindabazar / Chowhatta', lat: 24.8949, lng: 91.8687 },
+  { label: '🎓 Rajshahi - Shaheb Bazar', lat: 24.3745, lng: 88.6042 },
+  { label: '⚓ Khulna - KDA Avenue / Shibbari', lat: 22.8456, lng: 89.5403 },
+  { label: '🌊 Barishal - Sadar Road', lat: 22.7010, lng: 90.3535 },
+  { label: '🌾 Bogura - Satmatha', lat: 24.8465, lng: 89.3777 },
+  { label: '🕌 Cumilla - Kandirpar', lat: 23.4682, lng: 91.1788 },
+  { label: '🏖️ Cox\'s Bazar - Kolatoli', lat: 21.4272, lng: 92.0058 },
 ];
 
 export function BranchManagement({ onNavigate }: Props) {
@@ -59,8 +86,16 @@ export function BranchManagement({ onNavigate }: Props) {
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [preselectedBranchForDevice, setPreselectedBranchForDevice] = useState<string>('');
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [selectedBranchForQR, setSelectedBranchForQR] = useState<Branch | null>(null);
+  const [isFetchingGps, setIsFetchingGps] = useState(false);
+  const [gpsDetectStatus, setGpsDetectStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    isPermissionPolicy?: boolean;
+  } | null>(null);
 
   const isAllBranchesSelected = !activeBranch || activeBranch.trim().toLowerCase() === 'all';
+  const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -71,6 +106,9 @@ export function BranchManagement({ onNavigate }: Props) {
     managerName: string;
     phone: string;
     status: 'active' | 'inactive';
+    latitude?: number;
+    longitude?: number;
+    radiusMeters?: number;
   }>({
     name: '',
     code: '',
@@ -80,13 +118,59 @@ export function BranchManagement({ onNavigate }: Props) {
     managerName: '',
     phone: '',
     status: 'active',
+    latitude: 23.8103,
+    longitude: 90.4125,
+    radiusMeters: 100,
   });
 
   // Web origin on the web build; configured deployment origin inside the APK.
   const webhookUrl = admsWebhookUrl();
 
+  const handleFetchCurrentGps = () => {
+    if (!navigator.geolocation) {
+      setGpsDetectStatus({
+        type: 'error',
+        message: 'আপনার এই ব্রাউজার বা ডিভাইসে Geolocation সাপোর্ট করে না।',
+      });
+      return;
+    }
+    setIsFetchingGps(true);
+    setGpsDetectStatus(null);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setFormData(prev => ({
+          ...prev,
+          latitude: parseFloat(pos.coords.latitude.toFixed(6)),
+          longitude: parseFloat(pos.coords.longitude.toFixed(6)),
+        }));
+        setGpsDetectStatus({
+          type: 'success',
+          message: `📍 বর্তমান অফিসের GPS লোকেশন সংগৃহীত হয়েছে (Lat: ${pos.coords.latitude.toFixed(4)}, Lng: ${pos.coords.longitude.toFixed(4)} • নির্ভুলতা ±${Math.round(pos.coords.accuracy)}m)`,
+        });
+        setIsFetchingGps(false);
+      },
+      err => {
+        const isPolicy =
+          err.message?.toLowerCase().includes('permissions policy') ||
+          err.message?.toLowerCase().includes('disabled') ||
+          err.code === 1;
+
+        setGpsDetectStatus({
+          type: 'error',
+          isPermissionPolicy: isPolicy,
+          message: isPolicy
+            ? 'গুগল এআই স্টুডিওর মোবাইল প্রিভিউ আইফ্রেমের (Iframe Permissions Policy) কারণে ব্রাউজার থেকে সরাসরি লাইভ জিপিএস ব্লক করা রয়েছে।'
+            : `GPS Location এরর: ${err.message}`,
+        });
+        setIsFetchingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const openCreateBranchModal = () => {
     setEditingBranch(null);
+    setGpsDetectStatus(null);
     setFormData({
       name: '',
       code: `BR-0${branches.length + 1}`,
@@ -96,12 +180,16 @@ export function BranchManagement({ onNavigate }: Props) {
       managerName: '',
       phone: '',
       status: 'active',
+      latitude: 23.8103,
+      longitude: 90.4125,
+      radiusMeters: 100,
     });
     setShowBranchModal(true);
   };
 
   const openEditBranchModal = (branch: Branch) => {
     setEditingBranch(branch);
+    setGpsDetectStatus(null);
     setFormData({
       name: branch.name || '',
       code: branch.code || 'BR-01',
@@ -111,6 +199,9 @@ export function BranchManagement({ onNavigate }: Props) {
       managerName: branch.managerName || '',
       phone: branch.phone || '',
       status: branch.status || 'active',
+      latitude: branch.latitude ?? 23.8103,
+      longitude: branch.longitude ?? 90.4125,
+      radiusMeters: branch.radiusMeters ?? 100,
     });
     setShowBranchModal(true);
   };
@@ -125,6 +216,9 @@ export function BranchManagement({ onNavigate }: Props) {
         name: formData.name.trim(),
         code: formData.code.trim().toUpperCase(),
         isHeadOffice: formData.type === 'head_office' || editingBranch.isHeadOffice,
+        latitude: formData.latitude !== undefined ? Number(formData.latitude) : undefined,
+        longitude: formData.longitude !== undefined ? Number(formData.longitude) : undefined,
+        radiusMeters: formData.radiusMeters ? Number(formData.radiusMeters) : 100,
       });
       addNotification({
         title: 'Branch Office Updated',
@@ -139,6 +233,9 @@ export function BranchManagement({ onNavigate }: Props) {
         name: formData.name.trim(),
         code: formData.code.trim().toUpperCase(),
         isHeadOffice: formData.type === 'head_office',
+        latitude: formData.latitude !== undefined ? Number(formData.latitude) : undefined,
+        longitude: formData.longitude !== undefined ? Number(formData.longitude) : undefined,
+        radiusMeters: formData.radiusMeters ? Number(formData.radiusMeters) : 100,
       });
       addNotification({
         title: 'New Branch Office Added',
@@ -554,6 +651,30 @@ export function BranchManagement({ onNavigate }: Props) {
                     </div>
                   )}
                 </div>
+                {/* Office Attendance QR Code Station (GPS Protected) */}
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-indigo-50/80 to-violet-50/80 border border-indigo-200/80 mb-4 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <IconQrCode size={16} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900">Office Attendance QR Station</p>
+                      <p className="text-[10px] text-slate-500">
+                        {branch.latitude && branch.longitude
+                          ? `GPS Geofenced (${branch.radiusMeters || 100}m radius)`
+                          : 'For staff without biometric machines'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBranchForQR(branch)}
+                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-xs flex items-center space-x-1 cursor-pointer transition-all"
+                  >
+                    <IconQrCode size={13} />
+                    <span>Print QR Poster</span>
+                  </button>
+                </div>
               </div>
 
               {/* Card Footer Actions */}
@@ -571,6 +692,13 @@ export function BranchManagement({ onNavigate }: Props) {
                 </button>
 
                 <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => setSelectedBranchForQR(branch)}
+                    className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                    title="View & Print Attendance QR Code"
+                  >
+                    <IconQrCode size={15} />
+                  </button>
                   <button
                     onClick={() => openEditBranchModal(branch)}
                     className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
@@ -824,6 +952,170 @@ export function BranchManagement({ onNavigate }: Props) {
                 </div>
               </div>
 
+              {/* GPS Geofencing & Office QR Attendance Configuration */}
+              <div className="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <IconMapPin size={16} className="text-indigo-600 shrink-0" />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800">
+                        GPS Geofence Perimeter &amp; Office QR
+                      </span>
+                      <p className="text-[10px] text-slate-500">
+                        Physical office coordinate boundary for General Shift staff.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleFetchCurrentGps}
+                      disabled={isFetchingGps}
+                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center space-x-1 cursor-pointer"
+                    >
+                      <IconMapPin size={13} />
+                      <span>{isFetchingGps ? 'Locating...' : '📍 Use My Current GPS'}</span>
+                    </button>
+                    {isInsideIframe && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(window.location.href, '_blank')}
+                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer flex items-center space-x-1"
+                        title="গুগল এআই স্টুডিও আইফ্রেমের বাইরে ফুল ব্রাউজার ট্যাবে খুলুন"
+                      >
+                        <span>🌐 ফুল ট্যাব</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick Area Preset Selector */}
+                <div className="bg-white/90 p-2.5 rounded-xl border border-indigo-100/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                  <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-700 shrink-0">
+                    <span className="text-indigo-600">⚡</span>
+                    <span>দ্রুত এলাকা নির্বাচন (Quick Presets):</span>
+                  </div>
+                  <select
+                    className="w-full sm:w-auto text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    onChange={e => {
+                      const idx = parseInt(e.target.value);
+                      if (!isNaN(idx) && BANGLADESH_LOCATION_PRESETS[idx]) {
+                        const sel = BANGLADESH_LOCATION_PRESETS[idx];
+                        setFormData(prev => ({
+                          ...prev,
+                          latitude: sel.lat,
+                          longitude: sel.lng,
+                        }));
+                        setGpsDetectStatus({
+                          type: 'success',
+                          message: `📍 "${sel.label}" এলাকার স্থানাঙ্ক (Lat: ${sel.lat}, Lng: ${sel.lng}) সেট করা হয়েছে।`,
+                        });
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>-- জনপ্রিয় অফিস এলাকা সিলেক্ট করুন --</option>
+                    {BANGLADESH_LOCATION_PRESETS.map((p, idx) => (
+                      <option key={p.label} value={idx}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Status Message / Detailed Guidance */}
+                {gpsDetectStatus && (
+                  gpsDetectStatus.type === 'success' ? (
+                    <div className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-xl p-2.5 flex items-center space-x-2 animate-fade-in">
+                      <IconCheck size={16} className="text-emerald-600 shrink-0" />
+                      <span>{gpsDetectStatus.message}</span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-amber-950 bg-amber-50/95 border border-amber-300 rounded-xl p-3 space-y-2 animate-fade-in">
+                      <div className="flex items-start space-x-2">
+                        <span className="text-base shrink-0">ℹ️</span>
+                        <div>
+                          <p className="font-bold text-amber-900">
+                            {gpsDetectStatus.isPermissionPolicy ? 'আইফ্রেম সিকিউরিটি পলিসি সীমাবদ্ধতা' : 'GPS লোকেশন সতর্কতা'}
+                          </p>
+                          <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
+                            {gpsDetectStatus.message}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 flex flex-wrap items-center gap-2">
+                        {isInsideIframe && (
+                          <button
+                            type="button"
+                            onClick={() => window.open(window.location.href, '_blank')}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer flex items-center space-x-1"
+                          >
+                            <span>🌐 ফুল ব্রাউজার ট্যাবে খুলুন (Open in New Tab)</span>
+                          </button>
+                        )}
+                        <a
+                          href="https://www.google.com/maps"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer flex items-center space-x-1"
+                        >
+                          <span>🗺️ গুগল ম্যাপে স্থানাঙ্ক দেখুন</span>
+                        </a>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-medium pt-0.5">
+                        💡 আপনি উপরের <strong>&ldquo;Quick Presets&rdquo;</strong> ড্রপডাউন থেকে মতিঝিল/গুলশান/উত্তরা ইত্যাদি যেকোনো এলাকা সিলেক্ট করতে পারেন অথবা সরাসরি গুগল ম্যাপ থেকে Latitude ও Longitude সংখ্যা লিখে দিতে পারেন।
+                      </p>
+                    </div>
+                  )
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Latitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 23.8103"
+                      value={formData.latitude ?? ''}
+                      onChange={e => setFormData({ ...formData, latitude: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Longitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 90.4125"
+                      value={formData.longitude ?? ''}
+                      onChange={e => setFormData({ ...formData, longitude: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Allowed Radius (Meters)
+                    </label>
+                    <input
+                      type="number"
+                      min={20}
+                      max={2000}
+                      placeholder="100"
+                      value={formData.radiusMeters ?? 100}
+                      onChange={e => setFormData({ ...formData, radiusMeters: parseInt(e.target.value) || 100 })}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -1015,6 +1307,15 @@ export function BranchManagement({ onNavigate }: Props) {
           setPreselectedBranchForDevice('');
         }}
       />
+
+      {/* Office Attendance QR Code Poster Modal */}
+      {selectedBranchForQR && (
+        <BranchQRModal
+          branch={selectedBranchForQR}
+          companyName="WorkNest HR"
+          onClose={() => setSelectedBranchForQR(null)}
+        />
+      )}
     </div>
   );
 }

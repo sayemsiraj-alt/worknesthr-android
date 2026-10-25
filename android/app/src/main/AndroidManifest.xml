@@ -38,4 +38,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Office QR attendance needs camera access to scan the posted QR code. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Capacitor WebView geolocation requests both permissions (Android 12+ allows approximate-only grants). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

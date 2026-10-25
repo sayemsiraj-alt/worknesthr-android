@@ -175,6 +175,10 @@ export type Branch = {
   currencyCode?: string;
   currencySymbol?: string;
   timezone?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusMeters?: number;
+  qrSecret?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -190,6 +194,10 @@ export const DEFAULT_HEAD_OFFICE_BRANCH: Branch = {
   phone: '',
   status: 'active',
   isHeadOffice: true,
+  latitude: 23.8103,
+  longitude: 90.4125,
+  radiusMeters: 100,
+  qrSecret: 'WORKNEST_HQ_DHAKA_2026',
 };
 
 export type Department = {

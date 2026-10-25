@@ -83,7 +83,13 @@ export function Sidebar({ currentPage, onNavigate, isOpen, onToggle }: Props) {
     }
   });
 
-  const fullMenuItems = isSuperAdmin
+  // "Tenants & SaaS" MUST strictly only be visible to the Master Software Owner (sayemsiraj@gmail.com).
+  // Under NO circumstances should any customer demo, client company, or ordinary admin ever see this menu item!
+  const isMasterOwnerAccount = Boolean(
+    currentUser?.email?.toLowerCase().trim() === 'sayemsiraj@gmail.com'
+  );
+
+  const fullMenuItems = isMasterOwnerAccount
     ? [...allowedMenuItems, { id: 'tenants' as Page, label: 'Tenants & SaaS', Icon: IconBuilding, group: 'System' }]
     : allowedMenuItems;
 
