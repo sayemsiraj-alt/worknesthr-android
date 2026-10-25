@@ -5,11 +5,12 @@ import { useTenant } from '../context/TenantContext';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../lib/firestoreService';
 import { EmployeeCheckIn } from './EmployeeCheckIn';
+import { OfficeQRGpsCheckIn } from './OfficeQRGpsCheckIn';
 import { DocumentManagement } from './DocumentManagement';
 import { ExpenseManagement } from './ExpenseManagement';
 import { OnboardingManagement } from './OnboardingManagement';
 import { EmployeeEngagement } from './EmployeeEngagement';
-import { formatTo12Hour } from '../utils/timeFormat';
+import { formatTo12Hour, formatMessageDateTime, formatDateGroupHeader, getMessageDateKey } from '../utils/timeFormat';
 import {
   findShiftByNameOrId,
   isShiftOvertimeEnabled,
@@ -44,6 +45,8 @@ import {
   IconSettings,
   IconFlame,
   IconCheck,
+  IconQrCode,
+  IconMapPin,
 } from './Icons';
 
 function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
@@ -138,6 +141,7 @@ export function EmployeePanel() {
   const [activeTab, setActiveTab] = useState<
     | 'overview'
     | 'checkin'
+    | 'office_qr'
     | 'attendance'
     | 'requests'
     | 'leave'
@@ -152,6 +156,7 @@ export function EmployeePanel() {
     | 'profile'
     | 'settings'
   >('overview');
+  const [showOfficeQRScanner, setShowOfficeQRScanner] = useState(false);
 
   // Sidebar Navigation & Hub States
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -169,6 +174,13 @@ export function EmployeePanel() {
   };
 
   const handleSelectTab = (tabId: any) => {
+    if (tabId === 'office_qr') {
+      setShowOfficeQRScanner(true);
+      setIsMobileSidebarOpen(false);
+      setIsAllFeaturesModalOpen(false);
+      setIsMoreFeaturesDropdownOpen(false);
+      return;
+    }
     setActiveTab(tabId);
     setIsMobileSidebarOpen(false);
     setIsAllFeaturesModalOpen(false);
@@ -883,6 +895,19 @@ export function EmployeePanel() {
         color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
         badge: todayRecord?.checkIn && todayRecord.checkIn !== '-' ? 'Checked In' : 'Punch Now',
         badgeColor: todayRecord?.checkIn && todayRecord.checkIn !== '-' ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-800',
+      },
+      {
+        id: 'office_qr' as const,
+        title: 'Office QR & GPS Punch',
+        shortTitle: 'Office QR',
+        subtitle: 'In-office physical QR attendance',
+        icon: '📱',
+        category: 'daily' as const,
+        categoryLabel: 'Daily & Attendance',
+        desc: 'Scan the office reception QR code to mark attendance with GPS geofence verification',
+        color: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100',
+        badge: 'In-Office',
+        badgeColor: 'bg-indigo-600 text-white font-bold',
       },
       {
         id: 'attendance' as const,
@@ -2546,6 +2571,17 @@ export function EmployeePanel() {
 
                 {/* Fast Action Buttons Grid */}
                 <div className="flex flex-wrap items-center gap-2 lg:max-w-md shrink-0">
+                  {/* Office QR & GPS Punch (Available for all staff, especially general shift without biometric machines) */}
+                  <button
+                    type="button"
+                    onClick={() => setShowOfficeQRScanner(true)}
+                    className="flex-1 sm:flex-initial px-4 py-2.5 bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md shadow-indigo-500/25 transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-95 whitespace-nowrap"
+                    title="Scan office reception QR code with GPS geofence verification"
+                  >
+                    <IconQrCode size={16} />
+                    <span>Office QR &amp; GPS Punch</span>
+                  </button>
+
                   {/* Camera Check-in is ONLY rendered if the employee has a Remote shift */}
                   {isRemoteEmployee && (
                     <button
@@ -3431,14 +3467,25 @@ export function EmployeePanel() {
                   Daily biometric and web check-in logs, working hours, and overtime records
                 </p>
               </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-xs font-bold text-slate-600">Month:</label>
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={e => setSelectedMonth(e.target.value)}
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800"
-                />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowOfficeQRScanner(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap"
+                  title="Mark attendance via Office QR code + GPS geofence"
+                >
+                  <IconQrCode size={14} />
+                  <span>Office QR Punch</span>
+                </button>
+                <div className="flex items-center space-x-2">
+                  <label className="text-xs font-bold text-slate-600">Month:</label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(e.target.value)}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800"
+                  />
+                </div>
               </div>
             </div>
 
@@ -4687,40 +4734,68 @@ export function EmployeePanel() {
                     </p>
                   </div>
                 ) : (
-                  myMessages.map(msg => {
+                  myMessages.map((msg, idx) => {
                     const isFromMe =
                       msg.fromEmployeeId === currentEmployee.id ||
                       msg.fromEmployeeId === currentEmployee.employeeId ||
                       msg.from?.toLowerCase() === currentEmployee.name.toLowerCase();
 
+                    const dtInfo = formatMessageDateTime(msg);
+                    const prevMsg = idx > 0 ? myMessages[idx - 1] : null;
+                    const prevDateKey = prevMsg ? getMessageDateKey(prevMsg) : null;
+                    const showDateDivider = idx === 0 || dtInfo.dateKey !== prevDateKey;
+
                     return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col ${isFromMe ? 'items-end' : 'items-start'}`}
-                      >
-                        <div className="flex items-center space-x-1.5 mb-1 px-1">
-                          <span className="text-[11px] font-bold text-slate-700">
-                            {isFromMe ? 'You' : msg.from}
-                          </span>
-                          <span className="text-[10px] text-slate-400">{msg.time}</span>
-                        </div>
+                      <div key={msg.id} className="space-y-1.5">
+                        {showDateDivider && (
+                          <div className="flex items-center justify-center my-3">
+                            <div className="bg-slate-200/90 text-slate-700 text-[10px] font-bold px-3 py-1 rounded-full shadow-2xs border border-slate-300/60 flex items-center space-x-1 select-none">
+                              <span>📅</span>
+                              <span>{formatDateGroupHeader(dtInfo.dateKey)}</span>
+                            </div>
+                          </div>
+                        )}
+
                         <div
-                          className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
-                            isFromMe
-                              ? 'bg-purple-600 text-white rounded-tr-none'
-                              : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
-                          }`}
+                          className={`flex flex-col ${isFromMe ? 'items-end' : 'items-start'}`}
                         >
-                          {msg.subject && (
-                            <p
-                              className={`font-bold mb-1 text-xs ${
-                                isFromMe ? 'text-purple-100' : 'text-purple-900'
+                          <div className="flex items-center space-x-1.5 mb-1 px-1">
+                            <span className="text-[11px] font-bold text-slate-700">
+                              {isFromMe ? 'You' : msg.from}
+                            </span>
+                            <span
+                              className="text-[10px] font-medium text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-full flex items-center space-x-1 cursor-default border border-slate-200/60 transition-colors"
+                              title={dtInfo.fullTooltip}
+                            >
+                              <span className="text-[9px]">🕒</span>
+                              <span>{dtInfo.displayStr}</span>
+                            </span>
+                          </div>
+                          <div
+                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
+                              isFromMe
+                                ? 'bg-purple-600 text-white rounded-tr-none'
+                                : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                            }`}
+                          >
+                            {msg.subject && (
+                              <p
+                                className={`font-bold mb-1 text-xs ${
+                                  isFromMe ? 'text-purple-100' : 'text-purple-900'
+                                }`}
+                              >
+                                {msg.subject}
+                              </p>
+                            )}
+                            <p className="whitespace-pre-wrap">{msg.content || msg.preview}</p>
+                            <div
+                              className={`mt-1.5 pt-1 border-t text-[10px] font-mono flex items-center justify-end space-x-1 select-none ${
+                                isFromMe ? 'border-purple-500/40 text-purple-200' : 'border-slate-100 text-slate-400'
                               }`}
                             >
-                              {msg.subject}
-                            </p>
-                          )}
-                          <p className="whitespace-pre-wrap">{msg.content || msg.preview}</p>
+                              <span>{dtInfo.dateStr ? `${dtInfo.dateStr} • ` : ''}{dtInfo.timeStr}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -5722,6 +5797,16 @@ export function EmployeePanel() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Office QR & GPS Geofence Attendance Scanner Modal */}
+      {showOfficeQRScanner && (
+        <OfficeQRGpsCheckIn
+          onSuccess={() => {
+            setShowOfficeQRScanner(false);
+          }}
+          onClose={() => setShowOfficeQRScanner(false)}
+        />
       )}
     </div>
   );

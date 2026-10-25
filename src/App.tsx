@@ -93,6 +93,10 @@ function AppContent() {
 
   const isPageAuthorized = (page: Page): boolean => {
     if (!currentUser) return false;
+    const isMasterOwner = currentUser?.email?.toLowerCase().trim() === 'sayemsiraj@gmail.com';
+    if (page === 'tenants') {
+      return isMasterOwner;
+    }
     if (currentUser.role === 'Super Admin' || isSuperAdmin) return true;
     const p = currentUser.permissions;
     if (!p) return false;
@@ -118,7 +122,6 @@ function AppContent() {
       case 'ai_assistant': return Boolean(p.reports);
       case 'zkteco': return Boolean(p.biometric);
       case 'settings': return Boolean(p.settings);
-      case 'tenants': return Boolean(isSuperAdmin);
       default: return true;
     }
   };
@@ -246,7 +249,7 @@ function AppContent() {
       case 'zkteco':
         return <ZKTecoIntegration />;
       case 'tenants':
-        return isSuperAdmin ? <SuperAdminTenants /> : <Dashboard onNavigate={handleNavigate} />;
+        return currentUser?.email?.toLowerCase().trim() === 'sayemsiraj@gmail.com' ? <SuperAdminTenants /> : <Dashboard onNavigate={handleNavigate} />;
       default:
         return <Dashboard onNavigate={handleNavigate} />;
     }

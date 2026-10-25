@@ -86,4 +86,22 @@ export const IconServer = (p: IconProps) => <I {...p}><rect x="2" y="2" width="2
 export const IconInfo = (p: IconProps) => <I {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></I>;
 export const IconLock = (p: IconProps) => <I {...p}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></I>;
 export const IconSparkles = (p: IconProps) => <I {...p}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></I>;
+export const IconQrCode = (p: IconProps) => (
+  <I {...p}>
+    <rect x="3" y="3" width="7" height="7" />
+    <rect x="14" y="3" width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+    <rect x="3" y="14" width="7" height="7" />
+    <line x1="7" y1="7" x2="7.01" y2="7" />
+    <line x1="17" y1="7" x2="17.01" y2="7" />
+    <line x1="7" y1="17" x2="7.01" y2="17" />
+    <line x1="17" y1="17" x2="17.01" y2="17" />
+  </I>
+);
+export const IconMapPin = (p: IconProps) => (
+  <I {...p}>
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </I>
+);
 

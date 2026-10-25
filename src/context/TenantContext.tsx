@@ -5,6 +5,9 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  deleteDoc,
+  getDocs,
+  where,
   onSnapshot,
   query,
   orderBy
@@ -54,6 +57,7 @@ export interface TenantContextType {
   updateCompanyStatus: (companyId: string, status: 'active' | 'suspended') => Promise<{ success: boolean; error?: string }>;
   updateCompanyProfile: (companyId: string, profile: Partial<CompanyProfile>) => Promise<{ success: boolean; error?: string }>;
   updateCompanySettings: (companyId: string, settings: Partial<CompanySettings>) => Promise<{ success: boolean; error?: string }>;
+  deleteCompany: (companyId: string) => Promise<{ success: boolean; error?: string }>;
   refreshCompanies: () => Promise<void>;
 }
 
@@ -91,11 +95,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // Check if current user is software owner / Super Admin
+  // Check if current user is software owner / Super Admin (STRICTLY sayemsiraj@gmail.com only)
   const isSuperAdmin = Boolean(
-    currentUser?.email?.toLowerCase() === 'sayemsiraj@gmail.com' ||
-    (currentUser as any)?.isPrimarySuperAdmin ||
-    ((currentUser as any)?.isSuperAdmin && currentUser?.role === 'Super Admin')
+    currentUser?.email?.toLowerCase().trim() === 'sayemsiraj@gmail.com'
   );
 
   // Active workspace / tenant ID:
@@ -429,10 +431,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         name: payload.ownerName.trim(),
         email: cleanEmail,
         password: defaultPassword,
-        role: 'Super Admin', // Within their own company, they are the main admin
+        role: 'Super Admin', // Within their own company workspace
         companyId,
         companyName: sanitizedName,
         isTenantOwner: true,
+        isSuperAdmin: false,
+        isPrimarySuperAdmin: false,
         status: payload.status === 'suspended' ? 'suspended' : 'active',
         permissions: ROLE_PERMISSION_PRESETS['Super Admin'],
         createdAt: new Date().toISOString(),
@@ -574,6 +578,142 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Permanently delete a client company workspace & purge its records from backend Firestore
+  const deleteCompany = async (companyId: string): Promise<{ success: boolean; error?: string }> => {
+    if (!isSuperAdmin) {
+      return { success: false, error: 'Only the Primary Super Admin (sayemsiraj@gmail.com) can delete companies.' };
+    }
+
+    if (!companyId || companyId === 'default') {
+      return { success: false, error: 'The Master Owner company workspace cannot be deleted.' };
+    }
+
+    const targetComp = allCompanies.find(c => c.id === companyId);
+    const targetEmail = targetComp?.ownerEmail?.toLowerCase().trim();
+
+    if (targetEmail === 'sayemsiraj@gmail.com') {
+      return { success: false, error: 'Cannot delete the master owner account.' };
+    }
+
+    try {
+      const { db } = getFirebaseInstance();
+
+      // 1. Delete Company document in 'companies' collection
+      try {
+        await deleteDoc(doc(db, 'companies', companyId));
+      } catch (e) {
+        console.warn('Error deleting company doc from Firestore:', e);
+      }
+
+      // 2. Delete associated admin documents in 'admins' collection
+      try {
+        const adminQ = query(collection(db, 'admins'), where('companyId', '==', companyId));
+        const adminSnap = await getDocs(adminQ);
+        for (const d of adminSnap.docs) {
+          const dData = d.data();
+          if (dData.email?.toLowerCase().trim() !== 'sayemsiraj@gmail.com') {
+            await deleteDoc(doc(db, 'admins', d.id));
+          }
+        }
+        if (targetEmail && targetEmail !== 'sayemsiraj@gmail.com') {
+          const emailQ = query(collection(db, 'admins'), where('email', '==', targetEmail));
+          const emailSnap = await getDocs(emailQ);
+          for (const d of emailSnap.docs) {
+            await deleteDoc(doc(db, 'admins', d.id));
+          }
+        }
+      } catch (e) {
+        console.warn('Error deleting admin docs from Firestore:', e);
+      }
+
+      // 3. Delete associated user identity records in 'users' collection
+      try {
+        const userQ = query(collection(db, 'users'), where('companyId', '==', companyId));
+        const userSnap = await getDocs(userQ);
+        for (const d of userSnap.docs) {
+          const dData = d.data();
+          if (dData.email?.toLowerCase().trim() !== 'sayemsiraj@gmail.com') {
+            await deleteDoc(doc(db, 'users', d.id));
+          }
+        }
+        if (targetEmail && targetEmail !== 'sayemsiraj@gmail.com') {
+          const uEmailQ = query(collection(db, 'users'), where('email', '==', targetEmail));
+          const uEmailSnap = await getDocs(uEmailQ);
+          for (const d of uEmailSnap.docs) {
+            await deleteDoc(doc(db, 'users', d.id));
+          }
+        }
+      } catch (e) {
+        console.warn('Error deleting user docs from Firestore:', e);
+      }
+
+      // 4. Purge all tenant-scoped business collections in Firestore
+      const tenantCollections = [
+        'employees',
+        'departments',
+        'branches',
+        'shifts',
+        'roster',
+        'attendance',
+        'leaves',
+        'leave_requests',
+        'expenses',
+        'payroll_runs',
+        'documents',
+        'offboarding_records',
+        'recruitment_jobs',
+        'candidates',
+        'biometric_devices',
+        'audit_logs',
+        'notifications',
+        'messages',
+      ];
+
+      for (const collName of tenantCollections) {
+        try {
+          const collQ = query(collection(db, collName), where('companyId', '==', companyId));
+          const collSnap = await getDocs(collQ);
+          for (const d of collSnap.docs) {
+            await deleteDoc(doc(db, collName, d.id));
+          }
+        } catch (e) {
+          console.warn(`Error purging ${collName} for company ${companyId}:`, e);
+        }
+      }
+
+      // 5. If currently viewing this deleted company workspace, reset back to Master 'default'
+      if (activeCompanyId === companyId) {
+        resetToOwnerCompany();
+      }
+
+      // 6. Update local state
+      setAllCompanies(prev => prev.filter(c => c.id !== companyId));
+
+      // 7. Clear localStorage tenant caches
+      try {
+        const keysToRemove = [
+          `worknest_company_${companyId}`,
+          `worknest_employees_${companyId}`,
+          `worknest_departments_${companyId}`,
+          `worknest_branches_${companyId}`,
+          `worknest_shifts_${companyId}`,
+          `worknest_roster_${companyId}`,
+          `worknest_attendance_${companyId}`,
+          `worknest_leaves_${companyId}`,
+          `worknest_expenses_${companyId}`,
+          `worknest_payroll_${companyId}`,
+          `worknest_offboarding_${companyId}`,
+        ];
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch {}
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Delete company error:', err);
+      return { success: false, error: err?.message || 'Failed to delete company workspace.' };
+    }
+  };
+
   const refreshCompanies = async () => {
     // Triggers refresh via snapshot
   };
@@ -601,6 +741,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         updateCompanyStatus,
         updateCompanyProfile,
         updateCompanySettings,
+        deleteCompany,
         refreshCompanies,
       }}
     >

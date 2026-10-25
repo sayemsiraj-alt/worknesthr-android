@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useData, Message, Employee } from '../context/DataContext';
+import { formatMessageDateTime, formatMessageListTime, formatDateGroupHeader, getMessageDateKey } from '../utils/timeFormat';
 
 import { Avatar, isImageAvatar } from './Avatar';
 
@@ -258,7 +259,9 @@ export function Messaging() {
                         <span className={`text-xs truncate ${m.unread ? 'font-bold text-slate-900' : 'text-slate-700'}`}>
                           {m.from}
                         </span>
-                        <span className="text-[10px] text-slate-400 shrink-0 ml-1">{m.time}</span>
+                        <span className="text-[10px] text-slate-400 shrink-0 ml-1 font-medium">
+                          {formatMessageListTime(m)}
+                        </span>
                       </div>
                       <p className={`text-xs truncate ${m.unread ? 'font-bold text-indigo-900' : 'font-medium text-slate-800'}`}>
                         {m.subject}
@@ -340,36 +343,64 @@ export function Messaging() {
 
               {/* Chat Thread Messages */}
               <div className="flex-1 p-3 sm:p-6 overflow-y-auto space-y-4 max-h-[460px] thin-scroll">
-                {threadMessages.map(msg => {
+                {threadMessages.map((msg, idx) => {
                   const isAdmin = msg.fromEmployeeId === 'admin' || msg.from === (currentUser?.name || 'HR Admin');
+                  const dtInfo = formatMessageDateTime(msg);
+                  const prevMsg = idx > 0 ? threadMessages[idx - 1] : null;
+                  const prevDateKey = prevMsg ? getMessageDateKey(prevMsg) : null;
+                  const showDateDivider = idx === 0 || dtInfo.dateKey !== prevDateKey;
+
                   return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
-                    >
-                      <div className="flex items-center space-x-2 mb-1 px-1">
-                        <Avatar
-                          avatar={
-                            msg.fromEmployeeId && msg.fromEmployeeId !== 'admin'
-                              ? (employees.find(e => e.id === msg.fromEmployeeId || e.employeeId === msg.fromEmployeeId)?.avatar || msg.fromAvatar)
-                              : (currentUser?.avatar || msg.fromAvatar)
-                          }
-                          name={msg.from}
-                          sizeClass="w-5 h-5"
-                          textClass="text-[10px]"
-                          roundedClass="rounded-md"
-                        />
-                        <span className="text-xs font-bold text-slate-700">{msg.from}</span>
-                        <span className="text-[10px] text-slate-400">{msg.time}</span>
-                      </div>
+                    <div key={msg.id} className="space-y-2">
+                      {showDateDivider && (
+                        <div className="flex items-center justify-center my-3.5">
+                          <div className="bg-slate-200/90 text-slate-700 text-[11px] font-bold px-3 py-1 rounded-full shadow-2xs border border-slate-300/60 flex items-center space-x-1.5 select-none">
+                            <span>📅</span>
+                            <span>{formatDateGroupHeader(dtInfo.dateKey)}</span>
+                          </div>
+                        </div>
+                      )}
+
                       <div
-                        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 sm:p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
-                          isAdmin
-                            ? 'bg-indigo-600 text-white rounded-tr-none'
-                            : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
-                        }`}
+                        className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                       >
-                        <p className="whitespace-pre-wrap">{msg.content || msg.preview}</p>
+                        <div className="flex items-center space-x-2 mb-1 px-1">
+                          <Avatar
+                            avatar={
+                              msg.fromEmployeeId && msg.fromEmployeeId !== 'admin'
+                                ? (employees.find(e => e.id === msg.fromEmployeeId || e.employeeId === msg.fromEmployeeId)?.avatar || msg.fromAvatar)
+                                : (currentUser?.avatar || msg.fromAvatar)
+                            }
+                            name={msg.from}
+                            sizeClass="w-5 h-5"
+                            textClass="text-[10px]"
+                            roundedClass="rounded-md"
+                          />
+                          <span className="text-xs font-bold text-slate-700">{msg.from}</span>
+                          <span
+                            className="text-[10px] font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-full flex items-center space-x-1 cursor-help transition-colors border border-slate-200/60"
+                            title={dtInfo.fullTooltip}
+                          >
+                            <span className="text-[9px]">🕒</span>
+                            <span>{dtInfo.displayStr}</span>
+                          </span>
+                        </div>
+                        <div
+                          className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 sm:p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
+                            isAdmin
+                              ? 'bg-indigo-600 text-white rounded-tr-none'
+                              : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap">{msg.content || msg.preview}</p>
+                          <div
+                            className={`mt-1.5 pt-1 border-t text-[10px] font-mono flex items-center justify-end space-x-1 select-none ${
+                              isAdmin ? 'border-indigo-500/40 text-indigo-200' : 'border-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <span>{dtInfo.dateStr ? `${dtInfo.dateStr} • ` : ''}{dtInfo.timeStr}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
