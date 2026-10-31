@@ -776,6 +776,26 @@ export function RosterDuty() {
           <button
             type="button"
             onClick={() => {
+              const firstDept = employees.find(e => Boolean(e.department))?.department || 'all';
+              setBulkDepartmentFilter(firstDept);
+              if (firstDept !== 'all') {
+                const deptEmpIds = employees.filter(e => e.department?.toLowerCase() === firstDept.toLowerCase()).map(e => e.id);
+                setBulkTargetEmployees(deptEmpIds);
+              } else {
+                setBulkTargetEmployees(employees.map(e => e.id));
+              }
+              setIsBulkModalOpen(true);
+            }}
+            className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition-all flex items-center space-x-1.5 cursor-pointer"
+            title="Assign shift or weekends to an entire department at once"
+          >
+            <span>🏢</span>
+            <span>Department Roster Assigner</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
               setBulkTargetEmployees(employees.map(e => e.id));
               setIsBulkModalOpen(true);
             }}
@@ -1585,7 +1605,7 @@ export function RosterDuty() {
                     onClick={() => setBulkTargetEmployees(filteredBulkEmployees.map(e => e.id))}
                     className="text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
                   >
-                    Select All
+                    Select All ({filteredBulkEmployees.length})
                   </button>
                   <span className="text-slate-300">•</span>
                   <button
@@ -1599,7 +1619,7 @@ export function RosterDuty() {
               </div>
 
               {/* Filters */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
                   type="text"
                   placeholder="Search employee..."
@@ -1609,13 +1629,25 @@ export function RosterDuty() {
                 />
                 <select
                   value={bulkDepartmentFilter}
-                  onChange={e => setBulkDepartmentFilter(e.target.value)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-white"
+                  onChange={e => {
+                    const newDept = e.target.value;
+                    setBulkDepartmentFilter(newDept);
+                    if (newDept !== 'all') {
+                      const deptEmpIds = employees
+                        .filter(emp => emp.department?.toLowerCase() === newDept.toLowerCase())
+                        .map(emp => emp.id);
+                      setBulkTargetEmployees(deptEmpIds);
+                    }
+                  }}
+                  className="px-3 py-1.5 border border-indigo-200 rounded-xl text-xs bg-indigo-50/50 font-bold text-indigo-950 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                 >
-                  <option value="all">All Departments</option>
-                  {Array.from(new Set(employees.map(e => e.department).filter(Boolean))).map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
+                  <option value="all">👥 All Departments ({employees.length} Staff)</option>
+                  {Array.from(new Set(employees.map(e => e.department).filter(Boolean))).map(d => {
+                    const count = employees.filter(e => e.department === d).length;
+                    return (
+                      <option key={d} value={d}>🏢 {d} ({count} Staff)</option>
+                    );
+                  })}
                 </select>
               </div>
 

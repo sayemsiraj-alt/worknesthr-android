@@ -664,6 +664,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         'recruitment_jobs',
         'candidates',
         'biometric_devices',
+        'zkteco_devices',
+        'punches',
         'audit_logs',
         'notifications',
         'messages',
@@ -675,6 +677,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           const collSnap = await getDocs(collQ);
           for (const d of collSnap.docs) {
             await deleteDoc(doc(db, collName, d.id));
+          }
+
+          // Also purge documents whose ID is prefixed with companyId (e.g. dev_comp_... or comp_...)
+          const allCollSnap = await getDocs(collection(db, collName));
+          for (const d of allCollSnap.docs) {
+            if (d.id.includes(companyId)) {
+              await deleteDoc(doc(db, collName, d.id));
+            }
           }
         } catch (e) {
           console.warn(`Error purging ${collName} for company ${companyId}:`, e);

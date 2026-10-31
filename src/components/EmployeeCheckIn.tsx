@@ -236,7 +236,8 @@ export function EmployeeCheckIn() {
         maxOvertimeHours: sched.maxOvertimeHours || 0,
         latePolicyEnabled: sched.latePolicyEnabled !== false,
         isFlexible: sched.shift?.type === 'flexible',
-        photoProof: capturedPhoto
+        photoProof: capturedPhoto,
+        skipMonthFilter: true
       });
 
       // 2. Also preserve Realtime Database backup if configured

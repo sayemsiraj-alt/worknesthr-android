@@ -175,6 +175,7 @@ export function BiometricDeviceModal({ isOpen, deviceToEdit: propDeviceToEdit, e
       autoSync,
       location: location.trim(),
       notes: notes.trim(),
+      companyId: deviceToEdit?.companyId,
       lastSeen: deviceToEdit?.lastSeen || null,
       lastSync: deviceToEdit?.lastSync || null,
     };
@@ -249,7 +250,7 @@ export function BiometricDeviceModal({ isOpen, deviceToEdit: propDeviceToEdit, e
           {/* Row 0: Assigned Office / Branch Selection */}
           <div className="bg-indigo-50/80 border border-indigo-200 rounded-2xl p-4">
             <label className="block text-xs font-bold text-indigo-900 uppercase mb-1.5">
-              Assigned Branch Office (মেশিনটি কোন অফিসে লাগানো আছে?) <span className="text-rose-500">*</span>
+              Assigned Branch Office <span className="text-rose-500">*</span>
             </label>
             <select
               value={branch}
@@ -263,7 +264,7 @@ export function BiometricDeviceModal({ isOpen, deviceToEdit: propDeviceToEdit, e
               ))}
             </select>
             <p className="text-[11px] text-indigo-700 mt-1.5 font-medium">
-              ঢাকার মেইন অফিস বা যেকোনো শাখা অফিস সিলেক্ট করুন। মেশিনের সিরিয়াল নাম্বার অনুযায়ী অটোমেটিক ওই ব্রাঞ্চের এমপ্লয়ীদের হাজিরা সিঙ্ক হবে।
+              Select the office or branch location. Employee attendance punches from this machine will automatically map to the selected branch.
             </p>
           </div>
 

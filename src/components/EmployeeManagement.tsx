@@ -136,6 +136,9 @@ export function EmployeeManagement() {
     avatar: '👨‍💼',
     address: '',
     emergencyContact: '',
+    paymentBasis: 'monthly',
+    weeklyWage: 7500,
+    dailyRate: 1154,
     managerId: '',
     managerName: '',
     isManager: false,
@@ -312,6 +315,9 @@ export function EmployeeManagement() {
       avatar: emp.avatar || '👨‍💼',
       address: emp.address || '',
       emergencyContact: emp.emergencyContact || '',
+      paymentBasis: emp.paymentBasis || 'monthly',
+      weeklyWage: emp.weeklyWage || Math.round(rawGross / 4),
+      dailyRate: emp.dailyRate || Math.round(rawGross / 26),
       managerId: emp.managerId || '',
       managerName: emp.managerName || '',
       isManager: Boolean(emp.isManager),
@@ -336,11 +342,20 @@ export function EmployeeManagement() {
       ? (formData.lastWorkingDay || editing?.lastWorkingDay || getBangladeshTodayStr())
       : undefined;
 
+    const weeklyWageVal = formData.paymentBasis === 'weekly'
+      ? (Number(formData.weeklyWage) || Math.round(gross / 4))
+      : Math.round(gross / 4);
+
+    const dailyRateVal = Number(formData.dailyRate) || Math.round(gross / 26);
+
     const payload: Omit<Employee, 'id'> = {
       ...formData,
       lastWorkingDay: effectiveLastWorkingDay,
       branch: formData.branch || 'Main Head Office (Dhaka)',
       branchId: selectedBranchObj?.id || formData.branchId || 'BR-001',
+      paymentBasis: formData.paymentBasis || 'monthly',
+      weeklyWage: weeklyWageVal,
+      dailyRate: dailyRateVal,
       grossSalary: gross,
       basicSalary: basic,
       basic: basic,
@@ -605,7 +620,18 @@ export function EmployeeManagement() {
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="font-bold text-indigo-700 whitespace-nowrap">৳ {gross.toLocaleString()}</div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-bold text-indigo-700 whitespace-nowrap">৳ {gross.toLocaleString()}</span>
+                          {emp.paymentBasis === 'weekly' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800" title="Weekly Wage Employee">
+                              Weekly (৳{(emp.weeklyWage || Math.round(gross/4)).toLocaleString()}/wk)
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                              Monthly
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-500 whitespace-nowrap">Basic: ৳ {basic.toLocaleString()}</div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
@@ -755,24 +781,26 @@ export function EmployeeManagement() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-semibold text-slate-700">Email Address *</label>
+                      <label className="text-xs font-semibold text-slate-700">
+                        Email Address <span className="text-slate-400 font-normal text-[11px]">(Optional)</span>
+                      </label>
                       <input
                         type="email"
-                        required
                         value={formData.email}
                         onChange={e => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="e.g. tanvir@company.com"
+                        placeholder="e.g. tanvir@company.com (optional)"
                         className="w-full mt-1 px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-700">Phone Number *</label>
+                      <label className="text-xs font-semibold text-slate-700">
+                        Phone Number <span className="text-slate-400 font-normal text-[11px]">(Optional)</span>
+                      </label>
                       <input
                         type="tel"
-                        required
                         value={formData.phone}
                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                        placeholder="e.g. +880 1712-345678"
+                        placeholder="e.g. +880 1712-345678 (optional)"
                         className="w-full mt-1 px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
@@ -780,7 +808,7 @@ export function EmployeeManagement() {
 
                   <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5">
                     <label className="text-xs font-bold text-indigo-900 block mb-1">
-                      Assigned Branch Office (কোন অফিসে কর্মরত?) *
+                      Assigned Branch Office *
                     </label>
                     <select
                       value={formData.branch || 'Main Head Office (Dhaka)'}
@@ -882,11 +910,11 @@ export function EmployeeManagement() {
                         }}
                         className="w-full mt-1 px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       >
-                        <option value="active">Active (সক্রিয়)</option>
-                        <option value="inactive">Inactive (নিষ্ক্রিয়)</option>
-                        <option value="suspended">Suspended (স্থগিত)</option>
-                        <option value="terminated">Terminated (বরখাস্ত)</option>
-                        <option value="on_leave">On Leave (ছুটিতে)</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="suspended">Suspended</option>
+                        <option value="terminated">Terminated</option>
+                        <option value="on_leave">On Leave</option>
                       </select>
                     </div>
 
@@ -895,10 +923,10 @@ export function EmployeeManagement() {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div>
                             <label className="text-xs font-bold text-amber-900 block">
-                              Last Working Day / Exit Date (শেষ কর্মদিবস)
+                              Last Working Day / Exit Date
                             </label>
                             <p className="text-[11px] text-amber-700 mt-0.5">
-                              এই তারিখের পর থেকে কর্মীকে আর দৈনিক হাজিরায় Absent বা তালিকায় দেখানো হবে না। অতীতের সব রেকর্ড সংরক্ষিত থাকবে।
+                              After this date, the employee will no longer be marked absent in daily attendance. Past attendance and payroll records remain archived.
                             </p>
                           </div>
                           <input
@@ -967,7 +995,7 @@ export function EmployeeManagement() {
                         />
                         <div>
                           <label className="text-xs sm:text-sm font-extrabold text-indigo-950 block">
-                            📷 Employee Profile Picture (প্রোফাইল ছবি আপলোড করুন)
+                            📷 Employee Profile Picture
                           </label>
                           <p className="text-[11px] text-slate-500 mt-0.5">
                             Upload employee photo (JPG, PNG, WEBP) for New or Running Employee profile &amp; ID card.
@@ -1047,6 +1075,116 @@ export function EmployeeManagement() {
               {/* TAB 2: SALARY & AUTO-CALCULATION (THE CORE RESTORED FEATURE) */}
               {activeTab === 'salary' && (
                 <div className="space-y-4">
+                  {/* Payment Basis Selector (Monthly vs Weekly) */}
+                  <div className="p-3.5 bg-white border border-indigo-200 rounded-2xl shadow-xs space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                          Salary Payment Cycle *
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Select whether this employee is paid on a monthly basis or weekly wage basis.
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              paymentBasis: 'monthly',
+                            }));
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                            formData.paymentBasis !== 'weekly'
+                              ? 'bg-indigo-600 text-white shadow-2xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <span>📅</span>
+                          <span>Monthly</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentGross = Number(formData.grossSalary) || 30000;
+                            const calcWeekly = Math.round(currentGross / 4);
+                            const calcDaily = Math.round(currentGross / 26);
+                            setFormData(prev => ({
+                              ...prev,
+                              paymentBasis: 'weekly',
+                              weeklyWage: prev.weeklyWage || calcWeekly,
+                              dailyRate: prev.dailyRate || calcDaily,
+                            }));
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                            formData.paymentBasis === 'weekly'
+                              ? 'bg-purple-600 text-white shadow-2xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <span>📆</span>
+                          <span>Weekly</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {formData.paymentBasis === 'weekly' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                        <div>
+                          <label className="text-xs font-bold text-purple-900 block mb-1">
+                            Weekly Wage (BDT) *
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-xs font-bold text-purple-600">৳</span>
+                            <input
+                              type="number"
+                              required
+                              min="0"
+                              value={formData.weeklyWage || ''}
+                              onChange={e => {
+                                const wWage = Number(e.target.value);
+                                const dRate = Math.round(wWage / 6);
+                                const approxGross = wWage * 4;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  weeklyWage: wWage,
+                                  dailyRate: dRate,
+                                }));
+                                handleGrossSalaryChange(approxGross);
+                              }}
+                              placeholder="e.g. 7500"
+                              className="w-full pl-7 pr-3 py-2 border border-purple-200 bg-purple-50/50 rounded-xl text-sm font-bold text-purple-950 focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-400">Paid every week (approx. 4 weeks/month)</span>
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">
+                            Daily Rate (BDT)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">৳</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={formData.dailyRate || ''}
+                              onChange={e => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  dailyRate: Number(e.target.value),
+                                }));
+                              }}
+                              placeholder="e.g. 1250"
+                              className="w-full pl-7 pr-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-400">Used for absence/working day deductions</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Highlighted Gross Salary Card */}
                   <div className="p-4 bg-gradient-to-r from-indigo-50/80 to-purple-50/80 border-2 border-indigo-200 rounded-2xl">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">

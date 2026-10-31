@@ -263,15 +263,50 @@ export async function recordZKTecoPunchToFirestore({
       timeStr = d.toTimeString().slice(0, 5);
     }
 
+    const resolvedCompanyId = (companyId && String(companyId).trim() !== '') ? String(companyId).trim() : 'default';
+    const cleanEmpId = String(employeeId || '').trim();
+    const cleanTimeKey = timeStr.replace(/[^0-9]/g, '');
+
+    // Write raw punch event to 'punches' collection immediately so every physical, face, or emulator punch is securely preserved
+    try {
+      const punchDocId = (resolvedCompanyId !== 'default')
+        ? `${resolvedCompanyId}_${cleanEmpId}_${dateStr}_${cleanTimeKey}_${Date.now()}`
+        : `${cleanEmpId}_${dateStr}_${cleanTimeKey}_${Date.now()}`;
+
+      await setDoc(doc(firestoreDb, 'punches', punchDocId), sanitizeForFirestore({
+        id: punchDocId,
+        companyId: resolvedCompanyId,
+        employeeId: cleanEmpId,
+        employeeCode: cleanEmpId,
+        employeeName: employeeName || 'Staff Member',
+        department: department || 'General',
+        branch: branch || 'Main Head Office (Dhaka)',
+        branchId: branchId || 'BR-001',
+        date: dateStr,
+        time: timeStr,
+        punchTime: timeStr,
+        timestamp: `${dateStr}T${timeStr}:00`,
+        punchTimestamp: punchTimestamp.includes('T') ? punchTimestamp : `${dateStr}T${timeStr}:00`,
+        deviceSerialNumber: deviceSerialNumber || 'ZKTeco-Machine',
+        deviceName: deviceName || 'Biometric Punch Machine',
+        verifyMode: verifyMode || 'Fingerprint',
+        source: photoProof ? 'browser_camera' : (verifyMode === 'Face' ? 'face_recognition' : 'zkteco_biometric'),
+        photoProof: photoProof || null,
+        createdAt: new Date().toISOString()
+      }), { merge: true });
+    } catch (pErr) {
+      console.warn('Could not write raw punch to punches collection at top:', pErr);
+    }
+
     // CURRENT MONTH CHECK: Only sync running current month to Firebase unless skipMonthFilter is set
     if (!skipMonthFilter && !isCurrentMonth(dateStr)) {
-      console.warn(`[Attendance Sync] Ignored punch for ${dateStr} - outside running current month.`);
+      console.warn(`[Attendance Sync] Ignored daily attendance calculation for ${dateStr} - outside running current month (raw punch preserved in punches collection).`);
       return {
-        success: false,
-        reason: 'Outside current running month',
-        status: 'ignored',
+        success: true,
+        reason: 'Outside current running month (raw punch saved to punches)',
+        status: 'recorded_punch_only',
         isFirstPunchToday: false,
-        checkIn: null,
+        checkIn: timeStr,
         checkOut: null,
         otHours: 0
       };

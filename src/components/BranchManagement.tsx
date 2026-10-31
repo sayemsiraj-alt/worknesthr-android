@@ -128,7 +128,7 @@ export function BranchManagement({ onNavigate }: Props) {
     if (!navigator.geolocation) {
       setGpsDetectStatus({
         type: 'error',
-        message: 'আপনার এই ব্রাউজার বা ডিভাইসে Geolocation সাপোর্ট করে না।',
+        message: 'Geolocation is not supported by your browser or device.',
       });
       return;
     }
@@ -143,7 +143,7 @@ export function BranchManagement({ onNavigate }: Props) {
         }));
         setGpsDetectStatus({
           type: 'success',
-          message: `📍 বর্তমান অফিসের GPS লোকেশন সংগৃহীত হয়েছে (Lat: ${pos.coords.latitude.toFixed(4)}, Lng: ${pos.coords.longitude.toFixed(4)} • নির্ভুলতা ±${Math.round(pos.coords.accuracy)}m)`,
+          message: `📍 Office GPS location detected (Lat: ${pos.coords.latitude.toFixed(4)}, Lng: ${pos.coords.longitude.toFixed(4)} • Accuracy ±${Math.round(pos.coords.accuracy)}m)`,
         });
         setIsFetchingGps(false);
       },
@@ -157,8 +157,8 @@ export function BranchManagement({ onNavigate }: Props) {
           type: 'error',
           isPermissionPolicy: isPolicy,
           message: isPolicy
-            ? 'গুগল এআই স্টুডিওর মোবাইল প্রিভিউ আইফ্রেমের (Iframe Permissions Policy) কারণে ব্রাউজার থেকে সরাসরি লাইভ জিপিএস ব্লক করা রয়েছে।'
-            : `GPS Location এরর: ${err.message}`,
+            ? 'Browser permissions policy blocked live GPS detection inside the iframe preview.'
+            : `GPS Location error: ${err.message}`,
         });
         setIsFetchingGps(false);
       },
@@ -327,7 +327,7 @@ export function BranchManagement({ onNavigate }: Props) {
             Head Office &amp; Branch Offices Management
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            ঢাকার Main Head Office এবং দেশের সকল Branch Office-এর Biometric Attendance Machine, Employee, Shift, Leave ও Payroll একই সফটওয়্যার থেকে একসাথে নিয়ন্ত্রণ করুন।
+            Manage biometric attendance machines, employees, shifts, leave policies, and payroll for Head Office and all branch offices together.
           </p>
         </div>
 
@@ -369,7 +369,7 @@ export function BranchManagement({ onNavigate }: Props) {
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1">
-              নিচের যেকোনো Branch সিলেক্ট করলে পুরো সফটওয়্যারের Attendance, Employees, Payroll এবং Reports সাথে সাথে সেই Branch অনুযায়ী ফিল্টার হবে, অথবা &ldquo;All Branches&rdquo; দিয়ে সব একসাথে দেখুন।
+              Select any branch below to filter Attendance, Staff, Payroll, and Reports for that location, or choose &ldquo;All Branches&rdquo; for consolidated views.
             </p>
           </div>
 
@@ -729,10 +729,10 @@ export function BranchManagement({ onNavigate }: Props) {
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                কিভাবে ঢাকার Head Office এবং সকল Branch Office-এর Attendance Machine একই সফটওয়্যারে যুক্ত করবেন?
+                How to connect Head Office and all Branch Office Attendance Machines to WorkNest?
               </h3>
               <p className="text-xs text-slate-500">
-                Central ADMS Cloud Push Protocol — আলাদা কোনো সার্ভার বা লোকাল পিসি ছাড়াই সব ব্রাঞ্চের মেশিন সরাসরি কানেক্ট হবে
+                Central ADMS Cloud Push Protocol — Connect devices directly from anywhere without local servers or port forwarding
               </p>
             </div>
           </div>
@@ -758,9 +758,9 @@ export function BranchManagement({ onNavigate }: Props) {
             <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-black text-[10px] uppercase">
               Step 1 • Register Branch &amp; Machine
             </span>
-            <h4 className="font-bold text-slate-900 text-sm">১. ব্রাঞ্চ ও মেশিনের Serial Number যুক্ত করুন</h4>
+            <h4 className="font-bold text-slate-900 text-sm">1. Create Branch &amp; Register Serial Number</h4>
             <p className="text-slate-600 leading-relaxed">
-              প্রথমে এখানে আপনার প্রতিটি Branch Office (যেমন: Dhaka Head Office, Chattogram Branch, Sylhet Branch) তৈরি করুন। এরপর প্রতিটি ব্রাঞ্চের ZKTeco মেশিনের <strong>Serial Number (SN)</strong> দিয়ে ওই ব্রাঞ্চের অধীনে Register করুন।
+              Create your branch offices (e.g. Dhaka Head Office, Chattogram Branch). Then register your ZKTeco machine <strong>Serial Number (SN)</strong> under that branch.
             </p>
           </div>
 
@@ -768,9 +768,9 @@ export function BranchManagement({ onNavigate }: Props) {
             <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-black text-[10px] uppercase">
               Step 2 • Branch Machine ADMS Setup
             </span>
-            <h4 className="font-bold text-slate-900 text-sm">২. প্রতিটি ব্রাঞ্চের মেশিনে Cloud Server URL দিন</h4>
+            <h4 className="font-bold text-slate-900 text-sm">2. Enter Cloud Server URL in Machine</h4>
             <p className="text-slate-600 leading-relaxed">
-              যে কোনো ব্রাঞ্চের ZKTeco মেশিনে ইন্টারনেট (Wi-Fi বা LAN) সংযোগ দিয়ে <strong>Menu &gt; Comm. &gt; Cloud Server Setting (ADMS)</strong>-এ গিয়ে উপরের Server Address এবং Port <strong>443</strong> বসিয়ে দিন।
+              Connect your ZKTeco device to internet (Wi-Fi or LAN), go to <strong>Menu &gt; Comm. &gt; Cloud Server Setting (ADMS)</strong>, and enter the Server Address above with Port <strong>443</strong>.
             </p>
           </div>
 
@@ -778,9 +778,9 @@ export function BranchManagement({ onNavigate }: Props) {
             <span className="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-black text-[10px] uppercase">
               Step 3 • Unified HR &amp; Payroll Control
             </span>
-            <h4 className="font-bold text-slate-900 text-sm">৩. এক সফটওয়্যার থেকেই সব ব্রাঞ্চ মেইনটেইন করুন</h4>
+            <h4 className="font-bold text-slate-900 text-sm">3. Manage Everything Centralized</h4>
             <p className="text-slate-600 leading-relaxed">
-              যেকোনো ব্রাঞ্চের কর্মী পাঞ্চ করলেই সাথে সাথে তার ব্রাঞ্চ ও শিফট অনুযায়ী <strong>Present / Late / Overtime / Payroll</strong> অটোমেটিক ক্যালকুলেট হবে। উপরের <strong>Branch Switcher</strong> দিয়ে আলাদা বা একসাথে সব ব্রাঞ্চ দেখুন!
+              Whenever an employee punches at any machine, attendance, late calculation, overtime, and payroll update in real-time. Use the <strong>Branch Switcher</strong> anytime!
             </p>
           </div>
         </div>
@@ -978,9 +978,9 @@ export function BranchManagement({ onNavigate }: Props) {
                         type="button"
                         onClick={() => window.open(window.location.href, '_blank')}
                         className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer flex items-center space-x-1"
-                        title="গুগল এআই স্টুডিও আইফ্রেমের বাইরে ফুল ব্রাউজার ট্যাবে খুলুন"
+                        title="Open in new browser tab"
                       >
-                        <span>🌐 ফুল ট্যাব</span>
+                        <span>🌐 New Tab</span>
                       </button>
                     )}
                   </div>
@@ -990,7 +990,7 @@ export function BranchManagement({ onNavigate }: Props) {
                 <div className="bg-white/90 p-2.5 rounded-xl border border-indigo-100/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
                   <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-700 shrink-0">
                     <span className="text-indigo-600">⚡</span>
-                    <span>দ্রুত এলাকা নির্বাচন (Quick Presets):</span>
+                    <span>Quick Area Presets:</span>
                   </div>
                   <select
                     className="w-full sm:w-auto text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
@@ -1005,13 +1005,13 @@ export function BranchManagement({ onNavigate }: Props) {
                         }));
                         setGpsDetectStatus({
                           type: 'success',
-                          message: `📍 "${sel.label}" এলাকার স্থানাঙ্ক (Lat: ${sel.lat}, Lng: ${sel.lng}) সেট করা হয়েছে।`,
+                          message: `📍 Preset selected: "${sel.label}" (Lat: ${sel.lat}, Lng: ${sel.lng})`,
                         });
                       }
                     }}
                     defaultValue=""
                   >
-                    <option value="" disabled>-- জনপ্রিয় অফিস এলাকা সিলেক্ট করুন --</option>
+                    <option value="" disabled>-- Select Popular Office Area --</option>
                     {BANGLADESH_LOCATION_PRESETS.map((p, idx) => (
                       <option key={p.label} value={idx}>
                         {p.label}
@@ -1033,7 +1033,7 @@ export function BranchManagement({ onNavigate }: Props) {
                         <span className="text-base shrink-0">ℹ️</span>
                         <div>
                           <p className="font-bold text-amber-900">
-                            {gpsDetectStatus.isPermissionPolicy ? 'আইফ্রেম সিকিউরিটি পলিসি সীমাবদ্ধতা' : 'GPS লোকেশন সতর্কতা'}
+                            {gpsDetectStatus.isPermissionPolicy ? 'Iframe Permissions Policy Restriction' : 'GPS Location Notice'}
                           </p>
                           <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
                             {gpsDetectStatus.message}
@@ -1048,7 +1048,7 @@ export function BranchManagement({ onNavigate }: Props) {
                             onClick={() => window.open(window.location.href, '_blank')}
                             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer flex items-center space-x-1"
                           >
-                            <span>🌐 ফুল ব্রাউজার ট্যাবে খুলুন (Open in New Tab)</span>
+                            <span>🌐 Open in New Tab</span>
                           </button>
                         )}
                         <a
@@ -1057,11 +1057,11 @@ export function BranchManagement({ onNavigate }: Props) {
                           rel="noreferrer"
                           className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer flex items-center space-x-1"
                         >
-                          <span>🗺️ গুগল ম্যাপে স্থানাঙ্ক দেখুন</span>
+                          <span>🗺️ View Coordinates on Google Maps</span>
                         </a>
                       </div>
                       <p className="text-[10px] text-slate-500 font-medium pt-0.5">
-                        💡 আপনি উপরের <strong>&ldquo;Quick Presets&rdquo;</strong> ড্রপডাউন থেকে মতিঝিল/গুলশান/উত্তরা ইত্যাদি যেকোনো এলাকা সিলেক্ট করতে পারেন অথবা সরাসরি গুগল ম্যাপ থেকে Latitude ও Longitude সংখ্যা লিখে দিতে পারেন।
+                        💡 You can select an area from the <strong>&ldquo;Quick Presets&rdquo;</strong> dropdown or enter latitude and longitude directly.
                       </p>
                     </div>
                   )
@@ -1159,8 +1159,8 @@ export function BranchManagement({ onNavigate }: Props) {
                 }`}
               >
                 {deleteWarningStep === 1
-                  ? '⚠️ Warning 1 of 2 • ১ম সতর্কবার্তা'
-                  : '🚨 Final Warning 2 of 2 • চূড়ান্ত সতর্কবার্তা'}
+                  ? '⚠️ Warning 1 of 2 • First Warning'
+                  : '🚨 Final Warning 2 of 2 • Destructive Action'}
               </span>
               <button
                 type="button"
@@ -1183,10 +1183,10 @@ export function BranchManagement({ onNavigate }: Props) {
                   </div>
                   <div>
                     <h3 className="text-lg font-black text-slate-900">
-                      আপনি কি এই ব্রাঞ্চ অফিসটি ডিলিট করতে চান?
+                      Are you sure you want to delete this branch office?
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      First Confirmation (১ম সতর্কবার্তা) — অনুগ্রহ করে ব্রাঞ্চের তথ্য যাচাই করুন
+                      First Confirmation — Please verify the branch details before proceeding
                     </p>
                   </div>
                 </div>
@@ -1207,7 +1207,7 @@ export function BranchManagement({ onNavigate }: Props) {
                 </div>
 
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  আপনি <strong>{branchToDelete.name}</strong> ডিলিট করার প্রক্রিয়া শুরু করেছেন। ডিলিট করার আগে আপনাকে <strong>২ বার সতর্কবার্তা (Warning)</strong> দেওয়া হবে। এটি ১ম সতর্কবার্তা। আপনি কি পরবর্তী চূড়ান্ত ধাপে যেতে চান?
+                  You are about to delete <strong>{branchToDelete.name}</strong>. You will receive 2 confirmation warnings before permanent removal. This is Warning 1. Do you want to proceed?
                 </p>
 
                 <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -1219,14 +1219,14 @@ export function BranchManagement({ onNavigate }: Props) {
                     }}
                     className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-center"
                   >
-                    Cancel (বাতিল করুন)
+                    Cancel
                   </button>
                   <button
                     type="button"
                     onClick={() => setDeleteWarningStep(2)}
                     className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md transition-all cursor-pointer text-center"
                   >
-                    Yes, Show 2nd Warning → (হ্যাঁ, ২য় সতর্কবার্তা দেখুন)
+                    Proceed to Final Confirmation →
                   </button>
                 </div>
               </div>
@@ -1238,10 +1238,10 @@ export function BranchManagement({ onNavigate }: Props) {
                   </div>
                   <div>
                     <h3 className="text-lg font-black text-rose-700">
-                      চূড়ান্ত সতর্কবার্তা (২/২): স্থায়ীভাবে মুছে যাবে!
+                      Final Confirmation (2/2): Irreversible Deletion!
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Final Confirmation — ডাটাবেজ থেকে চিরস্থায়ীভাবে ডিলিট করার চূড়ান্ত অনুমোদন
+                      Confirm permanent removal from the database
                     </p>
                   </div>
                 </div>
@@ -1251,7 +1251,7 @@ export function BranchManagement({ onNavigate }: Props) {
                     🗑️ &ldquo;{branchToDelete.name}&rdquo; ({branchToDelete.code})
                   </p>
                   <p className="leading-relaxed">
-                    এখন <strong>Confirm Permanent Delete</strong> বাটনে ক্লিক করলে এই ব্রাঞ্চ অফিসটি <strong>Firebase Cloud Database থেকে সম্পূর্ণরূপে মুছে যাবে</strong>। (এই ব্রাঞ্চের অধীনে কোনো স্টাফ বা মেশিন থাকলে সেগুলো নিরাপদে Main Head Office-এ যুক্ত থাকবে)।
+                    Clicking <strong>Confirm Permanent Delete</strong> will permanently erase this branch office from the database. Any active employees or devices will remain safely mapped to the Main Head Office.
                   </p>
                 </div>
 
@@ -1262,7 +1262,7 @@ export function BranchManagement({ onNavigate }: Props) {
                     onClick={() => setDeleteWarningStep(1)}
                     className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-center"
                   >
-                    ← Back (ফিরে যান)
+                    ← Back
                   </button>
                   <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                     <button
@@ -1284,7 +1284,7 @@ export function BranchManagement({ onNavigate }: Props) {
                     >
                       <IconTrash size={15} />
                       <span>
-                        {isDeletingBranch ? 'Deleting from DB...' : 'Confirm Permanent Delete (ডিলিট করুন)'}
+                        {isDeletingBranch ? 'Deleting from DB...' : 'Confirm Permanent Delete'}
                       </span>
                     </button>
                   </div>

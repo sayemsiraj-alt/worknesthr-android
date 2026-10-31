@@ -98,10 +98,10 @@ export function getMessageDateKey(msg: { createdAt?: string; id?: string; time?:
 }
 
 /**
- * Formats a date group divider header (e.g., "Today • আজকের বার্তা (25 Oct 2026)")
+ * Formats a date group divider header (e.g., "Today (25 Oct 2026)")
  */
 export function formatDateGroupHeader(dateKey: string): string {
-  if (!dateKey || dateKey === 'unknown') return 'Earlier Messages • পূর্ববর্তী বার্তা';
+  if (!dateKey || dateKey === 'unknown') return 'Earlier Messages';
   try {
     const [y, m, d] = dateKey.split('-').map(Number);
     const dateObj = new Date(y, m - 1, d);
@@ -115,10 +115,10 @@ export function formatDateGroupHeader(dateKey: string): string {
     const weekday = dateObj.toLocaleDateString('en-GB', { weekday: 'long' });
 
     if (dateKey === todayKey) {
-      return `Today • আজকের বার্তা (${formattedDate})`;
+      return `Today (${formattedDate})`;
     }
     if (dateKey === yesterdayKey) {
-      return `Yesterday • গতকালের বার্তা (${formattedDate})`;
+      return `Yesterday (${formattedDate})`;
     }
     return `${formattedDate} (${weekday})`;
   } catch {

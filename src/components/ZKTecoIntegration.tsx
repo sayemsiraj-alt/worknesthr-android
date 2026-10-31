@@ -44,6 +44,11 @@ export function ZKTecoIntegration() {
         const list: any[] = [];
         snapshot.forEach(doc => {
           const data = doc.data();
+          const isOplog = doc.id.includes('OPLOG') ||
+            String(data.employeeId || '').toUpperCase().includes('OPLOG') ||
+            String(data.employeeName || '').toUpperCase().includes('OPLOG');
+          if (isOplog) return;
+
           const docComp = data.companyId || 'default';
           const matches = activeTenant !== 'default' ? docComp === activeTenant : (!data.companyId || docComp === 'default');
           if (matches) {

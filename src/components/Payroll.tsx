@@ -219,6 +219,19 @@ export function Payroll() {
   const [deptFilter, setDeptFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'on_hold'>('all');
 
+  // Pay Cycle: Monthly vs Weekly Payroll
+  const [payCycle, setPayCycle] = useState<'monthly' | 'weekly'>('monthly');
+  const [selectedWeekNumber, setSelectedWeekNumber] = useState<number>(1);
+  const [weeklyStatusMap, setWeeklyStatusMap] = useState<Record<string, 'paid' | 'unpaid'>>(() => {
+    try {
+      const saved = localStorage.getItem('worknest_weekly_payroll_status');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [viewingWeeklyPayslip, setViewingWeeklyPayslip] = useState<any | null>(null);
+
   // Stored monthly payroll overrides keyed by `${month}_${employeeId}`
   const [monthlyRecords, setMonthlyRecords] = useState<Record<string, MonthlyPayrollRecord>>(() => {
     try {
@@ -364,6 +377,216 @@ export function Payroll() {
   const payrollRunsList = useMemo(() => {
     return Object.values(monthlyPayrollRuns).sort((a, b) => b.month.localeCompare(a.month));
   }, [monthlyPayrollRuns]);
+
+  // Compute Weekly dates range info
+  const weekDatesInfo = useMemo(() => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const totalDays = new Date(y, m, 0).getDate();
+    let startDay = 1;
+    let endDay = 7;
+    if (selectedWeekNumber === 1) {
+      startDay = 1;
+      endDay = 7;
+    } else if (selectedWeekNumber === 2) {
+      startDay = 8;
+      endDay = 14;
+    } else if (selectedWeekNumber === 3) {
+      startDay = 15;
+      endDay = 21;
+    } else if (selectedWeekNumber === 4) {
+      startDay = 22;
+      endDay = 28;
+    } else if (selectedWeekNumber === 5) {
+      startDay = 29;
+      endDay = totalDays;
+    }
+    const startDateStr = `${selectedMonth}-${String(startDay).padStart(2, '0')}`;
+    const endDateStr = `${selectedMonth}-${String(endDay).padStart(2, '0')}`;
+    const monthName = new Date(y, m - 1, 1).toLocaleString('default', { month: 'short' });
+    return {
+      weekNumber: selectedWeekNumber,
+      startDay,
+      endDay,
+      totalDays: Math.max(1, endDay - startDay + 1),
+      startDateStr,
+      endDateStr,
+      totalMonthDays: totalDays,
+      hasWeek5: totalDays > 28,
+      label: `Week ${selectedWeekNumber} (${startDay}–${endDay} ${monthName})`,
+    };
+  }, [selectedMonth, selectedWeekNumber]);
+
+  // Compute Weekly Payroll list
+  const weeklyPayrollList = useMemo(() => {
+    const { startDateStr, endDateStr, totalDays } = weekDatesInfo;
+    const keyPrefix = `${selectedMonth}_w${selectedWeekNumber}_`;
+
+    return employees
+      .filter(emp => {
+        if (emp.status !== 'active') return false;
+        if (activeBranch !== 'All' && getEmployeeBranch(emp) !== activeBranch) return false;
+        if (deptFilter !== 'all' && emp.department?.toLowerCase() !== deptFilter.toLowerCase()) return false;
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          const match = emp.name.toLowerCase().includes(q) || emp.employeeId.toLowerCase().includes(q);
+          if (!match) return false;
+        }
+        return true;
+      })
+      .map(emp => {
+        const isWeeklyEmp = emp.paymentBasis === 'weekly';
+        const weeklyWage = emp.weeklyWage || Math.round((emp.grossSalary || 30000) / 4);
+        const dailyRate = emp.dailyRate || Math.round(weeklyWage / 6);
+
+        // Attendance records in this 7-day period
+        const empAtt = firestoreAttendance.filter(a => {
+          const m = a.employeeId === emp.employeeId || a.employeeId === emp.id;
+          return m && a.date >= startDateStr && a.date <= endDateStr;
+        });
+
+        const presentDays = empAtt.filter(
+          a => a.status === 'present' || a.status === 'late' || (a.checkIn && a.checkIn !== '-')
+        ).length;
+        const weekendDays = Math.max(1, totalDays - 6);
+        const standardWorkingDays = Math.max(1, totalDays - weekendDays);
+        const absentDays = Math.max(0, standardWorkingDays - presentDays);
+
+        let otHours = 0;
+        empAtt.forEach(a => {
+          otHours += Number(a.otHours || 0);
+        });
+
+        const hourlyOtRate = Math.round((dailyRate / 8) * 1.5);
+        const otAmount = Math.round(otHours * hourlyOtRate);
+        const absentDeduction = Math.round(absentDays * dailyRate);
+        const netPayable = Math.max(0, weeklyWage - absentDeduction + otAmount);
+
+        const statusKey = `${keyPrefix}${emp.id}`;
+        const status = weeklyStatusMap[statusKey] || 'unpaid';
+
+        return {
+          employee: emp,
+          isWeeklyEmp,
+          weeklyWage,
+          dailyRate,
+          totalDays,
+          standardWorkingDays,
+          presentDays,
+          weekendDays,
+          absentDays,
+          otHours: Math.round(otHours * 10) / 10,
+          hourlyOtRate,
+          otAmount,
+          absentDeduction,
+          netPayable,
+          status,
+          statusKey,
+        };
+      });
+  }, [
+    employees,
+    activeBranch,
+    deptFilter,
+    searchQuery,
+    weekDatesInfo,
+    selectedMonth,
+    selectedWeekNumber,
+    firestoreAttendance,
+    weeklyStatusMap,
+    getEmployeeBranch,
+  ]);
+
+  const weeklyStats = useMemo(() => {
+    let totalWeeklyBudget = 0;
+    let totalWeeklyNet = 0;
+    let totalWeeklyOtCost = 0;
+    let paidCount = 0;
+    let unpaidCount = 0;
+
+    weeklyPayrollList.forEach(w => {
+      totalWeeklyBudget += w.weeklyWage;
+      totalWeeklyNet += w.netPayable;
+      totalWeeklyOtCost += w.otAmount;
+      if (w.status === 'paid') paidCount++;
+      else unpaidCount++;
+    });
+
+    return {
+      totalWeeklyBudget,
+      totalWeeklyNet,
+      totalWeeklyOtCost,
+      paidCount,
+      unpaidCount,
+      totalStaff: weeklyPayrollList.length,
+      weeklyStaffCount: weeklyPayrollList.filter(w => w.isWeeklyEmp).length,
+    };
+  }, [weeklyPayrollList]);
+
+  const handleToggleWeeklyPaidStatus = (statusKey: string) => {
+    setWeeklyStatusMap(prev => {
+      const next: Record<string, 'paid' | 'unpaid'> = {
+        ...prev,
+        [statusKey]: prev[statusKey] === 'paid' ? 'unpaid' : 'paid',
+      };
+      try {
+        localStorage.setItem('worknest_weekly_payroll_status', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const exportWeeklyPayrollCSV = () => {
+    const headers = [
+      'Employee ID',
+      'Name',
+      'Department',
+      'Designation',
+      'Payment Basis',
+      'Week Range',
+      'Weekly Base Wage (BDT)',
+      'Daily Rate (BDT)',
+      'Working Days',
+      'Present Days',
+      'Absent Days',
+      'OT Hours',
+      'OT Amount (BDT)',
+      'Absent Deduction (BDT)',
+      'Net Weekly Payable (BDT)',
+      'Status',
+    ];
+
+    const rows = weeklyPayrollList.map(w => [
+      `"${w.employee.employeeId}"`,
+      `"${w.employee.name}"`,
+      `"${w.employee.department}"`,
+      `"${w.employee.designation}"`,
+      `"${w.isWeeklyEmp ? 'Weekly' : 'Monthly (Converted)'}"`,
+      `"${weekDatesInfo.startDateStr} to ${weekDatesInfo.endDateStr}"`,
+      w.weeklyWage,
+      w.dailyRate,
+      w.standardWorkingDays,
+      w.presentDays,
+      w.absentDays,
+      w.otHours,
+      w.otAmount,
+      w.absentDeduction,
+      w.netPayable,
+      `"${w.status}"`,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute(
+      'download',
+      `Weekly_Payroll_${selectedMonth}_Week${selectedWeekNumber}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const isMonthLocked = Boolean(
     activePayrollRun && (activePayrollRun.isLocked || activePayrollRun.approvalStatus === 'locked')
@@ -1632,8 +1855,80 @@ export function Payroll() {
         </div>
       </div>
 
-      {/* Month-End Payroll Generation & Payslip Publishing Banner */}
-      <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+      {/* Pay Cycle Switcher: Monthly vs Weekly Payroll */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white border border-slate-200/80 rounded-2xl shadow-2xs">
+        <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setPayCycle('monthly')}
+            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center space-x-2 ${
+              payCycle === 'monthly'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>📅</span>
+            <span>Monthly Payroll</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPayCycle('weekly')}
+            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center space-x-2 ${
+              payCycle === 'weekly'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>📆</span>
+            <span>Weekly Payroll</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              payCycle === 'weekly' ? 'bg-purple-800 text-purple-100' : 'bg-purple-100 text-purple-800'
+            }`}>
+              {employees.filter(e => e.paymentBasis === 'weekly').length} Weekly Staff
+            </span>
+          </button>
+        </div>
+
+        {payCycle === 'weekly' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-700">Week:</span>
+            {[1, 2, 3, 4, ...(weekDatesInfo.hasWeek5 ? [5] : [])].map(wNum => {
+              const isSelected = selectedWeekNumber === wNum;
+              return (
+                <button
+                  key={wNum}
+                  type="button"
+                  onClick={() => setSelectedWeekNumber(wNum)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-purple-700 text-white shadow-sm ring-2 ring-purple-300'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Week {wNum}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={exportWeeklyPayrollCSV}
+              className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-2xs flex items-center space-x-1 cursor-pointer"
+            >
+              <span>📊</span>
+              <span>Export CSV</span>
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500 font-medium">
+            Standard 30/31-day monthly payroll cycles with Bangladesh Labour Act statutory rules.
+          </div>
+        )}
+      </div>
+
+      {payCycle === 'monthly' ? (
+        <>
+          {/* Month-End Payroll Generation & Payslip Publishing Banner */}
+          <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
         monthlyPayrollRuns[selectedMonth]?.status === 'published'
           ? 'bg-gradient-to-r from-emerald-50 to-teal-50/50 border-emerald-200/80 shadow-xs'
           : 'bg-gradient-to-r from-indigo-50/80 to-blue-50/40 border-indigo-200/80 shadow-xs'
@@ -2033,6 +2328,372 @@ export function Payroll() {
           </table>
         </div>
       </div>
+    </>
+  ) : (
+    <div className="space-y-6">
+      {/* Active Week Banner */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50/50 to-white border border-purple-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-base font-bold text-purple-950 flex items-center space-x-1.5">
+              <span>📆</span>
+              <span>Weekly Wage Sheet — {weekDatesInfo.label}</span>
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
+              {weekDatesInfo.startDateStr} to {weekDatesInfo.endDateStr} ({weekDatesInfo.totalDays} Days)
+            </span>
+          </div>
+          <p className="text-xs text-purple-800/80">
+            Weekly wages calculated automatically from 7-day physical biometric attendance, weekly off days, and overtime hours.
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-xs font-bold text-purple-900 bg-white px-3 py-1.5 rounded-xl border border-purple-200 shadow-2xs">
+            {weeklyPayrollList.length} Active Workers
+          </span>
+        </div>
+      </div>
+
+      {/* Weekly KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
+            <span>Total Weekly Wages</span>
+            <span>💰</span>
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-slate-800">
+            ৳ {weeklyStats.totalWeeklyBudget.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Base weekly rate sum</div>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center justify-between text-purple-600 text-xs font-semibold mb-1">
+            <span>Weekly Overtime Pay</span>
+            <span>⏰</span>
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-purple-700">
+            ৳ {weeklyStats.totalWeeklyOtCost.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-purple-500/80 mt-0.5">Overtime payment for this week</div>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-emerald-200 shadow-2xs bg-emerald-50/20">
+          <div className="flex items-center justify-between text-emerald-700 text-xs font-semibold mb-1">
+            <span>Net Payable Amount</span>
+            <span>💵</span>
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-emerald-700">
+            ৳ {weeklyStats.totalWeeklyNet.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-emerald-600 mt-0.5">Net cash / mobile banking to disburse</div>
+        </div>
+
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
+            <span>Weekly Disbursement Status</span>
+            <span>💳</span>
+          </div>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-xl sm:text-2xl font-black text-emerald-600">{weeklyStats.paidCount} Paid</span>
+            <span className="text-xs text-slate-400">/ {weeklyStats.unpaidCount} Pending</span>
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{weeklyStats.weeklyStaffCount} Designated Weekly Staff</div>
+        </div>
+      </div>
+
+      {/* Filters Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input
+          type="text"
+          placeholder="Search by worker name or employee ID..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs sm:text-sm"
+        />
+        <select
+          value={deptFilter}
+          onChange={e => setDeptFilter(e.target.value)}
+          className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs sm:text-sm"
+        >
+          <option value="all">All Departments ({departments.length})</option>
+          {departments.map(d => (
+            <option key={d.id} value={d.name}>{d.name}</option>
+          ))}
+        </select>
+        <select
+          value={activeBranch}
+          onChange={e => setActiveBranch(e.target.value)}
+          className="px-3.5 py-2 bg-purple-50/70 border border-purple-200 rounded-xl font-bold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-500 text-xs sm:text-sm"
+        >
+          <option value="All">🏢 All Offices ({allEmployees.length})</option>
+          {branches.map(b => (
+            <option key={b.id} value={b.name}>{b.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Weekly Payroll Table */}
+      <div className="bg-white rounded-2xl shadow-2xs border border-slate-200 overflow-hidden">
+        <div className="p-3.5 sm:p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <h3 className="font-bold text-slate-800 text-sm sm:text-base">
+              Weekly Wage Sheet — {weekDatesInfo.label}
+            </h3>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 font-semibold">
+              {weeklyPayrollList.length} Workers
+            </span>
+          </div>
+          <span className="text-[11px] text-slate-400">
+            Click <strong>"Weekly Slip"</strong> to print official wage voucher
+          </span>
+        </div>
+
+        <div className="overflow-x-auto thin-scroll">
+          <table className="w-full text-xs sm:text-sm min-w-[860px]">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">WORKER</th>
+                <th className="px-4 py-3 text-left font-semibold">WAGE RATE</th>
+                <th className="px-4 py-3 text-left font-semibold">ATTENDANCE (7 DAYS)</th>
+                <th className="px-4 py-3 text-left font-semibold">OT HOURS &amp; PAY</th>
+                <th className="px-4 py-3 text-left font-semibold">DEDUCTIONS</th>
+                <th className="px-4 py-3 text-left font-semibold">NET PAYABLE</th>
+                <th className="px-4 py-3 text-center font-semibold">STATUS</th>
+                <th className="px-4 py-3 text-right font-semibold">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {weeklyPayrollList.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                    No employees found matching current filters.
+                  </td>
+                </tr>
+              ) : (
+                weeklyPayrollList.map(w => (
+                  <tr key={w.employee.id} className="hover:bg-purple-50/30 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xl">{w.employee.avatar || '👷'}</span>
+                        <div>
+                          <div className="font-bold text-slate-900">{w.employee.name}</div>
+                          <div className="text-[11px] text-slate-500 flex items-center space-x-1.5 mt-0.5">
+                            <span className="font-mono text-purple-700 font-bold">{w.employee.employeeId}</span>
+                            <span>•</span>
+                            <span>{w.employee.department}</span>
+                            {w.isWeeklyEmp ? (
+                              <span className="px-1.5 py-0.2 bg-purple-100 text-purple-800 text-[10px] rounded font-bold">
+                                Weekly
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.2 bg-slate-100 text-slate-600 text-[10px] rounded">
+                                Monthly
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap font-mono">
+                      <div className="font-bold text-purple-900">৳ {w.weeklyWage.toLocaleString()}</div>
+                      <div className="text-[11px] text-slate-400">৳ {w.dailyRate}/day</div>
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center space-x-2 text-xs">
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md font-bold">
+                          {w.presentDays}d Present
+                        </span>
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-medium">
+                          {w.weekendDays}d Off
+                        </span>
+                        {w.absentDays > 0 && (
+                          <span className="px-2 py-0.5 bg-rose-50 text-rose-700 rounded-md font-bold">
+                            {w.absentDays}d Absent
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap font-mono">
+                      {w.otHours > 0 ? (
+                        <div>
+                          <div className="font-bold text-purple-700">+৳ {w.otAmount.toLocaleString()}</div>
+                          <div className="text-[11px] text-slate-400">{w.otHours}h @ ৳{w.hourlyOtRate}/h</div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs">0h (—)</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap font-mono text-rose-600">
+                      {w.absentDeduction > 0 ? (
+                        <div>
+                          <div>-৳ {w.absentDeduction.toLocaleString()}</div>
+                          <div className="text-[10px] text-slate-400">({w.absentDays}d absent)</div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs">৳ 0</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap font-mono font-black text-base text-emerald-700">
+                      ৳ {w.netPayable.toLocaleString()}
+                    </td>
+
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleWeeklyPaidStatus(w.statusKey)}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                          w.status === 'paid'
+                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                            : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                        }`}
+                      >
+                        {w.status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                      </button>
+                    </td>
+
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setViewingWeeklyPayslip(w)}
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 ml-auto cursor-pointer"
+                      >
+                        <span>📄</span>
+                        <span>Weekly Slip</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: OFFICIAL WEEKLY PAYSLIP / WAGE VOUCHER                              */}
+      {/* ========================================================================= */}
+      {viewingWeeklyPayslip && (() => {
+        const w = viewingWeeklyPayslip;
+        const netWords = numberToWords(w.netPayable);
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 max-h-[92vh] overflow-y-auto thin-scroll shadow-2xl border border-slate-200 animate-scale-in">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xl">📄</span>
+                  <h3 className="font-bold text-slate-800 text-base">Weekly Wage Voucher / Payslip</h3>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    🖨️ Print Voucher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewingWeeklyPayslip(null)}
+                    className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div id="payslip-modal-content" className="space-y-4">
+                {/* Header */}
+                <div className="text-center pb-3 border-b border-slate-200">
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight">{companyInfo.companyName}</h2>
+                  <p className="text-xs text-slate-500">{companyInfo.address} • {companyInfo.phone}</p>
+                  <div className="mt-2 inline-block px-3 py-1 bg-purple-50 text-purple-900 border border-purple-200 rounded-full text-xs font-bold">
+                    WEEKLY SALARY DISBURSEMENT SLIP — {weekDatesInfo.label}
+                  </div>
+                </div>
+
+                {/* Worker Info */}
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">WORKER NAME</span>
+                    <span className="font-bold text-slate-900">{w.employee.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">EMPLOYEE ID / BADGE</span>
+                    <span className="font-mono font-bold text-purple-700">{w.employee.employeeId}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">DEPARTMENT / DESIGNATION</span>
+                    <span className="font-medium text-slate-800">{w.employee.department} • {w.employee.designation}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">PERIOD</span>
+                    <span className="font-bold text-slate-800">{weekDatesInfo.startDateStr} to {weekDatesInfo.endDateStr}</span>
+                  </div>
+                </div>
+
+                {/* Earnings & Deductions Table */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden text-xs">
+                  <div className="grid grid-cols-2 bg-slate-100 font-bold p-2 text-slate-700 border-b border-slate-200">
+                    <span>EARNINGS &amp; ALLOWANCES</span>
+                    <span className="text-right">AMOUNT (BDT)</span>
+                  </div>
+                  <div className="p-3 space-y-1.5 divide-y divide-slate-100">
+                    <div className="flex justify-between py-1">
+                      <span>Base Weekly Wage</span>
+                      <span className="font-mono font-bold">৳ {w.weeklyWage.toLocaleString()}</span>
+                    </div>
+                    {w.otHours > 0 && (
+                      <div className="flex justify-between py-1 text-purple-700">
+                        <span>Overtime ({w.otHours} hrs @ ৳{w.hourlyOtRate}/h)</span>
+                        <span className="font-mono font-bold">+৳ {w.otAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 bg-slate-100 font-bold p-2 text-slate-700 border-t border-b border-slate-200">
+                    <span>DEDUCTIONS</span>
+                    <span className="text-right">AMOUNT (BDT)</span>
+                  </div>
+                  <div className="p-3 space-y-1.5 divide-y divide-slate-100">
+                    <div className="flex justify-between py-1 text-rose-600">
+                      <span>Absence Deduction ({w.absentDays} days @ ৳{w.dailyRate}/d)</span>
+                      <span className="font-mono font-bold">-৳ {w.absentDeduction.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Net Total */}
+                  <div className="p-3 bg-emerald-50 border-t border-emerald-200 flex justify-between items-center text-sm font-black text-emerald-900">
+                    <span>NET PAYABLE AMOUNT</span>
+                    <span className="font-mono text-base">৳ {w.netPayable.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500 italic bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  In Words: <strong className="text-slate-800 not-italic">{netWords}</strong>
+                </div>
+
+                {/* Signatures */}
+                <div className="pt-8 grid grid-cols-2 gap-8 text-center text-xs text-slate-500">
+                  <div>
+                    <div className="border-t border-slate-300 pt-1 font-medium">Worker Signature</div>
+                  </div>
+                  <div>
+                    <div className="border-t border-slate-300 pt-1 font-medium">Supervisor / Cashier Signature</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL 1: OFFICIAL PRINTABLE & DOWNLOADABLE PAYSLIP                        */}
@@ -3416,7 +4077,7 @@ export function Payroll() {
             <div className="p-6 space-y-5">
               {/* Info Note */}
               <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-900 leading-relaxed">
-                <p className="font-bold mb-1">📌 Policy Notice / নির্দেশিকা:</p>
+                <p className="font-bold mb-1">📌 Policy Notice:</p>
                 <p>
                   Turn OFF automatic deductions below if you prefer to deduct Provident Fund and Tax manually for specific employees only. When turned off, standard payroll runs will not auto-cut PF or Tax.
                 </p>

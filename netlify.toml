@@ -16,6 +16,30 @@
   force = true
 
 [[redirects]]
+  from = "/cdata"
+  to = "/.netlify/functions/iclock"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/fdata"
+  to = "/.netlify/functions/iclock"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/getrequest"
+  to = "/.netlify/functions/iclock"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/devicecmd"
+  to = "/.netlify/functions/iclock"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

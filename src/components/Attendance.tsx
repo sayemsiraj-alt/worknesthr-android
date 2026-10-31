@@ -35,7 +35,7 @@ export function Attendance() {
   const {
     employees, allEmployees, shifts, roster, devices, addNotification,
     attendanceRequests, updateAttendanceRequestStatus, branches, activeBranch, setActiveBranch, getEmployeeBranch,
-    offboardingRecords
+    offboardingRecords, currentUser, recordAuditLog
   } = useData();
   const { currentCompanyId } = useTenant();
   const activeTenant = currentCompanyId || 'default';
@@ -102,6 +102,26 @@ export function Attendance() {
   } | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [selectedProofRow, setSelectedProofRow] = useState<any | null>(null);
+  const [selectedAdminEditAuditRow, setSelectedAdminEditAuditRow] = useState<any | null>(null);
+
+  const formatAuditDateTime = (isoStr?: string | null) => {
+    if (!isoStr) return 'Just now';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      return d.toLocaleString('en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return isoStr;
+    }
+  };
 
   // Real-time Firestore records
   const [firestoreAttendance, setFirestoreAttendance] = useState<any[]>([]);
@@ -239,6 +259,11 @@ export function Attendance() {
         const rawPunches: any[] = [];
         snapshot.forEach(docSnap => {
           const data = docSnap.data();
+          const isOplog = docSnap.id.includes('OPLOG') ||
+            String(data.employeeId || '').toUpperCase().includes('OPLOG') ||
+            String(data.employeeName || '').toUpperCase().includes('OPLOG');
+          if (isOplog) return;
+
           const docComp = data.companyId || 'default';
           const matchComp = activeTenant !== 'default' ? docComp === activeTenant : (docComp === 'default');
           const normalized = normalizeRawPunch(docSnap.id, data);
@@ -258,6 +283,11 @@ export function Attendance() {
           const raw: any[] = [];
           snap.forEach(d => {
             const data = d.data();
+            const isOplog = d.id.includes('OPLOG') ||
+              String(data.employeeId || '').toUpperCase().includes('OPLOG') ||
+              String(data.employeeName || '').toUpperCase().includes('OPLOG');
+            if (isOplog) return;
+
             const docComp = data.companyId || 'default';
             const matchComp = activeTenant !== 'default' ? docComp === activeTenant : (docComp === 'default');
             const normalized = normalizeRawPunch(d.id, data);
@@ -731,6 +761,12 @@ export function Attendance() {
       };
     }
 
+    const isManuallyEdited = Boolean(
+      match?.isEdited ||
+      match?.source === 'admin_edit' ||
+      Boolean(match?.editedBy)
+    );
+
     return {
       ...emp,
       date: selectedDate,
@@ -749,6 +785,20 @@ export function Attendance() {
       source: match?.source || (validTodayPunches.length > 0 ? 'machine_punches' : hasPunch ? 'firestore_live' : 'none'),
       verificationType,
       verificationLabel,
+      isEdited: isManuallyEdited,
+      editedBy: match?.editedBy || (isManuallyEdited ? 'Admin' : null),
+      editedByEmail: match?.editedByEmail || null,
+      editedByRole: match?.editedByRole || 'Administrator',
+      editedAt: match?.editedAt || match?.updatedAt || null,
+      editReason: match?.editReason || match?.remarks || null,
+      previousCheckIn: match?.previousCheckIn || null,
+      previousCheckOut: match?.previousCheckOut || null,
+      previousStatus: match?.previousStatus || null,
+      previousTotalHours: match?.previousTotalHours !== undefined ? match.previousTotalHours : null,
+      previousOtHours: match?.previousOtHours !== undefined ? match.previousOtHours : null,
+      originalSource: match?.originalSource || (todayPunchObjects.length > 0 ? 'biometric' : 'manual'),
+      originalVerificationLabel: match?.originalVerificationLabel || (todayPunchObjects.length > 0 ? 'Fingerprint Scan Punch' : verificationLabel),
+      editHistory: Array.isArray(match?.editHistory) ? match.editHistory : [],
       deviceName: rawDeviceName,
       deviceSerialNumber: rawDeviceSerial,
       detailedPunches,
@@ -854,6 +904,37 @@ export function Attendance() {
       const empBranch = getEmployeeBranch(employee);
       const empBranchObj = branches.find(b => b.name === empBranch);
 
+      const nowIso = new Date().toISOString();
+      const adminName = currentUser?.name || 'Administrator';
+      const adminEmail = currentUser?.email || 'admin@worknest.com';
+      const adminRole = currentUser?.role || 'Super Admin';
+      const editReason = remarks?.trim() || 'Manual time adjustment by Admin';
+
+      const prevIn = employee.checkIn || '-';
+      const prevOut = employee.checkOut || '-';
+      const prevStatus = employee.status || 'absent';
+      const origVerification = employee.originalVerificationLabel || employee.verificationLabel || 'Fingerprint Scan Punch';
+      const origSource = employee.originalSource || employee.verificationType || 'biometric';
+
+      const auditEntry = {
+        editedBy: adminName,
+        editedByEmail: adminEmail,
+        editedByRole: adminRole,
+        editedAt: nowIso,
+        reason: editReason,
+        previousCheckIn: prevIn,
+        previousCheckOut: prevOut,
+        previousStatus: prevStatus,
+        newCheckIn: checkIn || '-',
+        newCheckOut: checkOut || '-',
+        newStatus: finalStatus,
+        newOtHours: userOtHours,
+        originalVerificationLabel: origVerification,
+      };
+
+      const existingHistory = Array.isArray(employee.editHistory) ? employee.editHistory : [];
+      const updatedHistory = [auditEntry, ...existingHistory].slice(0, 10);
+
       const payload = {
         companyId: activeTenant,
         date,
@@ -875,16 +956,41 @@ export function Attendance() {
         otHours: userOtHours,
         totalHours,
         workHours: totalHours,
-        remarks: remarks || 'Manually updated by Admin',
+        remarks: editReason,
         source: 'admin_edit',
-        updatedAt: new Date().toISOString(),
+        isEdited: true,
+        editedBy: adminName,
+        editedByEmail: adminEmail,
+        editedByRole: adminRole,
+        editedAt: nowIso,
+        editReason,
+        previousCheckIn: employee.previousCheckIn || prevIn,
+        previousCheckOut: employee.previousCheckOut || prevOut,
+        previousStatus: employee.previousStatus || prevStatus,
+        previousTotalHours: employee.previousTotalHours !== undefined ? employee.previousTotalHours : (employee.totalHours || 0),
+        previousOtHours: employee.previousOtHours !== undefined ? employee.previousOtHours : (employee.otHours || 0),
+        originalSource: origSource,
+        originalVerificationLabel: origVerification,
+        editHistory: updatedHistory,
+        updatedAt: nowIso,
       };
 
       await setDoc(doc(db, 'attendance', docId), payload, { merge: true });
 
+      if (recordAuditLog) {
+        recordAuditLog({
+          action: 'ATTENDANCE_TIME_EDITED',
+          category: 'attendance',
+          targetType: 'AttendanceRecord',
+          targetId: docId,
+          targetName: `${employee.name} (${date})`,
+          summary: `${adminName} (${adminRole}) manually edited attendance for ${employee.name} on ${date}. Check-In: ${prevIn} ➔ ${checkIn || '-'}, Check-Out: ${prevOut} ➔ ${checkOut || '-'}. Status: ${finalStatus}. Reason: ${editReason}`,
+        });
+      }
+
       addNotification({
-        title: 'Attendance Updated',
-        message: `Updated In (${checkIn || '-'}) and Out (${checkOut || '-'}) for ${employee.name} on ${date}`,
+        title: 'Attendance Manually Updated',
+        message: `${adminName} updated In (${checkIn || '-'}) and Out (${checkOut || '-'}) for ${employee.name} on ${date}`,
         read: false,
         type: 'attendance',
         targetPage: 'attendance'
@@ -1395,7 +1501,27 @@ export function Attendance() {
 
                     {/* Source & Photo Proof */}
                     <td className="py-2.5 px-2 text-center whitespace-nowrap text-xs font-medium">
-                      {row.checkIn !== '-' || row.checkOut !== '-' ? (
+                      {row.isEdited ? (
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAdminEditAuditRow(row)}
+                            title={`Manually altered by ${row.editedBy || 'Admin'}. Click to inspect full edit audit trail.`}
+                            className="group relative inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 active:from-purple-200 active:to-indigo-200 border-2 border-purple-300 hover:border-purple-400 text-purple-900 transition-all duration-150 cursor-pointer shadow-xs hover:scale-105 active:scale-95 text-left"
+                          >
+                            <span className="text-xs">✏️</span>
+                            <div className="flex flex-col leading-tight">
+                              <span className="font-extrabold text-purple-900 text-[11px] flex items-center space-x-1">
+                                <span>Admin Edit</span>
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse"></span>
+                              </span>
+                              <span className="text-[9px] text-purple-700 font-semibold truncate max-w-[100px]">
+                                by {row.editedBy || 'Admin'}
+                              </span>
+                            </div>
+                          </button>
+                        </div>
+                      ) : row.checkIn !== '-' || row.checkOut !== '-' ? (
                         <div className="flex items-center justify-center">
                           {(() => {
                             const isUnexcusedLate = row.status === 'late' && !row.isLateExcused;
@@ -1464,8 +1590,13 @@ export function Attendance() {
 
       {/* Raw Firestore Stream Log Viewer */}
       {(() => {
-        const selectedDatePunches = firestorePunches.filter((p: any) => !selectedDate || p.date === selectedDate);
-        const displayPunches = selectedDatePunches.length > 0 ? selectedDatePunches : firestorePunches;
+        const validPunches = firestorePunches.filter((p: any) =>
+          !String(p.id || '').toUpperCase().includes('OPLOG') &&
+          !String(p.employeeId || '').toUpperCase().includes('OPLOG') &&
+          !String(p.employeeName || '').toUpperCase().includes('OPLOG')
+        );
+        const selectedDatePunches = validPunches.filter((p: any) => !selectedDate || p.date === selectedDate);
+        const displayPunches = selectedDatePunches.length > 0 ? selectedDatePunches : validPunches;
         return (
           <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
@@ -1688,6 +1819,40 @@ export function Attendance() {
             </div>
 
             <div className="space-y-4">
+              {/* Admin identity banner */}
+              <div className="p-3 rounded-2xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/80 flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                    👨‍💼
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-purple-700 block">Logging Edit As:</span>
+                    <span className="font-extrabold text-slate-900">{currentUser?.name || 'Administrator'}</span>
+                    <span className="text-slate-500 font-mono text-[11px] ml-1.5">({currentUser?.role || 'Super Admin'})</span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                  Audit Tracked
+                </span>
+              </div>
+
+              {/* Previous vs Proposed summary */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
+                <div className="text-slate-500">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Saved in System:</span>
+                  <span className="font-mono font-semibold text-slate-700">
+                    In: {editingAttendance.employee.checkIn || '-'} • Out: {editingAttendance.employee.checkOut || '-'}
+                  </span>
+                </div>
+                <span className="text-sm font-bold text-purple-500 px-1">➔</span>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-purple-600 block">New Proposed:</span>
+                  <span className="font-mono font-bold text-purple-900">
+                    In: {editingAttendance.checkIn || '-'} • Out: {editingAttendance.checkOut || '-'}
+                  </span>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Check-In Time</label>
@@ -1882,6 +2047,30 @@ export function Attendance() {
             </div>
 
             <div className="p-6 space-y-5">
+              {/* If edited by Admin, show notification badge */}
+              {selectedProofRow.isEdited && (
+                <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 flex items-center justify-between gap-2 shadow-xs">
+                  <div className="flex items-center space-x-2 text-xs text-purple-900">
+                    <span className="text-base">✏️</span>
+                    <div>
+                      <span className="font-extrabold block">Altered by Admin: {selectedProofRow.editedBy || 'Administrator'}</span>
+                      <span className="text-[11px] text-purple-700">Timing was adjusted manually from the Admin panel.</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rowCopy = selectedProofRow;
+                      setSelectedProofRow(null);
+                      setSelectedAdminEditAuditRow(rowCopy);
+                    }}
+                    className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold shrink-0 cursor-pointer shadow-xs"
+                  >
+                    View Edit Details
+                  </button>
+                </div>
+              )}
+
               {/* Primary Detected Verification Method Card */}
               <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/90 via-slate-50 to-sky-50/90 border border-indigo-200/80 flex items-center justify-between gap-3">
                 <div className="flex items-center space-x-3.5">
@@ -2079,6 +2268,265 @@ export function Attendance() {
                   className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
                 >
                   Close Verification View
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ADMIN EDIT AUDIT TRAIL & HISTORY (CLICKING "ADMIN EDIT" BADGE)    */}
+      {/* ========================================================================= */}
+      {selectedAdminEditAuditRow && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
+          onClick={() => setSelectedAdminEditAuditRow(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto thin-scroll shadow-2xl border border-slate-200 overflow-hidden animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-950 via-indigo-950 to-slate-900 px-6 py-5 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/30 to-indigo-500/20 border border-purple-400/40 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                  ✏️
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-purple-400/20 text-purple-300 border border-purple-400/30">
+                      Administrative Override Log
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight mt-1 text-white">
+                    {selectedAdminEditAuditRow.name}
+                  </h3>
+                  <p className="text-xs text-purple-200 font-mono">
+                    ID: {selectedAdminEditAuditRow.employeeId || selectedAdminEditAuditRow.id} • Date: {selectedAdminEditAuditRow.date}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAdminEditAuditRow(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-sm font-bold cursor-pointer transition-all"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Card 1: Admin Who Edited */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50/80 via-indigo-50/50 to-slate-50 border-2 border-purple-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-start sm:items-center space-x-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center text-xl shadow-md shrink-0">
+                    👨‍💼
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-black text-slate-900 text-sm">
+                        {selectedAdminEditAuditRow.editedBy || 'System Administrator'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
+                        {selectedAdminEditAuditRow.editedByRole || 'Administrator'}
+                      </span>
+                    </div>
+                    {selectedAdminEditAuditRow.editedByEmail && (
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">
+                        {selectedAdminEditAuditRow.editedByEmail}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-purple-700 font-semibold mt-1 flex items-center space-x-1">
+                      <span>🕒 Edited on:</span>
+                      <strong className="font-mono">{formatAuditDateTime(selectedAdminEditAuditRow.editedAt)}</strong>
+                    </p>
+                  </div>
+                </div>
+                <div className="sm:text-right shrink-0">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-purple-100 text-purple-800 border border-purple-300 inline-flex items-center space-x-1">
+                    <span>✓</span>
+                    <span>Admin Altered</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 2: Reason for Manual Adjustment */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  💬 Reason / Remarks Provided by Admin:
+                </span>
+                <p className="text-xs text-slate-800 font-medium italic">
+                  "{selectedAdminEditAuditRow.editReason || selectedAdminEditAuditRow.remarks || 'Manual time adjustment by Admin'}"
+                </p>
+              </div>
+
+              {/* Card 3: Before Edit vs After Edit Side-by-Side Comparison */}
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Timing &amp; Status Comparison (Audit Diff)
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Before Box */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <span className="text-xs font-black uppercase text-slate-500">
+                        1. Before Edit (Original)
+                      </span>
+                      <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
+                        Previous
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Check-In:</span>
+                        <span className="font-mono font-bold text-slate-700">
+                          {selectedAdminEditAuditRow.previousCheckIn && selectedAdminEditAuditRow.previousCheckIn !== '-'
+                            ? formatTo12Hour(selectedAdminEditAuditRow.previousCheckIn)
+                            : '-'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Check-Out:</span>
+                        <span className="font-mono font-bold text-slate-700">
+                          {selectedAdminEditAuditRow.previousCheckOut && selectedAdminEditAuditRow.previousCheckOut !== '-'
+                            ? formatTo12Hour(selectedAdminEditAuditRow.previousCheckOut)
+                            : '-'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Status:</span>
+                        <span className="font-bold capitalize text-slate-600">
+                          {selectedAdminEditAuditRow.previousStatus || 'Absent / Not Punched'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-slate-200/80">
+                        <span className="text-slate-500 text-[11px]">Original Punch Method:</span>
+                        <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[140px]">
+                          {selectedAdminEditAuditRow.originalVerificationLabel || 'Fingerprint Scan Punch'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* After Box */}
+                  <div className="p-4 rounded-2xl bg-indigo-50/60 border-2 border-indigo-200 space-y-2.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-indigo-200">
+                      <span className="text-xs font-black uppercase text-indigo-900">
+                        2. After Edit (Current Live)
+                      </span>
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                        Active Now
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Check-In:</span>
+                        <span className="font-mono font-black text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                          {formatTo12Hour(selectedAdminEditAuditRow.checkIn)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Check-Out:</span>
+                        <span className="font-mono font-black text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                          {formatTo12Hour(selectedAdminEditAuditRow.checkOut)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Status:</span>
+                        <span className={`font-black capitalize px-2 py-0.5 rounded text-[11px] ${
+                          selectedAdminEditAuditRow.status === 'present'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : selectedAdminEditAuditRow.status === 'late'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {selectedAdminEditAuditRow.status}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-indigo-100">
+                        <span className="text-slate-600 text-[11px]">Calculated OT:</span>
+                        <span className="font-mono font-bold text-violet-700 text-[11px]">
+                          {selectedAdminEditAuditRow.otHours > 0 ? `+${selectedAdminEditAuditRow.otHours}h OT` : '0h (Normal)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* View underlying machine punches / biometric button */}
+              {(selectedAdminEditAuditRow.detailedPunches?.length > 0 || selectedAdminEditAuditRow.checkInPhoto || selectedAdminEditAuditRow.checkOutPhoto) && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 block">Underlying Raw Hardware Machine Punches</span>
+                    <span className="text-[11px] text-slate-500">
+                      Inspect biometric sensor heartbeat logs or camera pictures collected for this date.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rowCopy = selectedAdminEditAuditRow;
+                      setSelectedAdminEditAuditRow(null);
+                      setSelectedProofRow(rowCopy);
+                    }}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-all cursor-pointer shrink-0 ml-2"
+                  >
+                    🔍 Inspect Punches
+                  </button>
+                </div>
+              )}
+
+              {/* Multiple Edit History (if present) */}
+              {selectedAdminEditAuditRow.editHistory && selectedAdminEditAuditRow.editHistory.length > 1 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    📜 Previous Edit Log History ({selectedAdminEditAuditRow.editHistory.length})
+                  </p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto thin-scroll pr-1">
+                    {selectedAdminEditAuditRow.editHistory.map((hist: any, hIdx: number) => (
+                      <div key={hIdx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900">{hist.editedBy} ({hist.editedByRole})</span>
+                          <span className="text-[10px] text-slate-400 font-mono">{formatAuditDateTime(hist.editedAt)}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 font-mono">
+                          In: {hist.previousCheckIn} ➔ {hist.newCheckIn} • Out: {hist.previousCheckOut} ➔ {hist.newCheckOut}
+                        </p>
+                        {hist.reason && (
+                          <p className="text-[11px] text-slate-500 italic">"{hist.reason}"</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rowCopy = selectedAdminEditAuditRow;
+                    setSelectedAdminEditAuditRow(null);
+                    handleOpenEditModal(rowCopy);
+                  }}
+                  className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <span>✏️</span>
+                  <span>Edit Timing Again</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedAdminEditAuditRow(null)}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
+                >
+                  Close Audit View
                 </button>
               </div>
             </div>
