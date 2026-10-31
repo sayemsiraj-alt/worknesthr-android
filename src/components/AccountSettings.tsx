@@ -57,6 +57,11 @@ export function AccountSettings() {
   const { theme, accentColor, language, setTheme, setAccentColor, setLanguage, t } = useSettings();
   const { currentCompanyId, currentCompany, updateCompanyProfile, updateCompanySettings } = useTenant();
   const activeTenant = currentCompanyId || 'default';
+  const isMasterWorkspace = !currentCompanyId || currentCompanyId === 'default';
+  const visibleAdmins = isMasterWorkspace
+    ? adminAccounts
+    : adminAccounts.filter(a => (a.email || '').trim().toLowerCase() !== 'sayemsiraj@gmail.com');
+  const totalAdminCount = isMasterWorkspace ? visibleAdmins.length + 1 : visibleAdmins.length;
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -1066,7 +1071,7 @@ export function AccountSettings() {
     { id: 'zkteco', label: 'ZKTeco Biometric', Icon: IconFingerprint },
     { id: 'firebase', label: 'Firebase Cloud DB', Icon: IconCloud, badge: firebaseConnected ? 'Live' : 'Offline' },
     { id: 'security', label: 'Security & Password', Icon: IconKey },
-    { id: 'admin_users', label: 'Admin Roles & RBAC', Icon: IconShield, badge: `${adminAccounts.length + 1}` },
+    { id: 'admin_users', label: 'Admin Roles & RBAC', Icon: IconShield, badge: `${totalAdminCount}` },
     { id: 'notifications', label: 'Notifications', Icon: IconBell },
     { id: 'backup', label: 'Backup & Recovery', Icon: IconDatabase },
   ];
@@ -1649,8 +1654,8 @@ export function AccountSettings() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
                     { id: 'en', code: 'US', label: 'English (US)', sub: 'Default International English' },
-                    { id: 'bn', code: 'BD', label: 'বাংলা (Bengali)', sub: 'সম্পূর্ণ বাংলা ইন্টারফেস' },
-                    { id: 'hi', code: 'IN', label: 'हिन्दी (Hindi)', sub: 'संपूर्ण हिन्दी इंटरफ़ेस' },
+                    { id: 'bn', code: 'BD', label: 'Bengali (বাংলা)', sub: 'Bengali Localization' },
+                    { id: 'hi', code: 'IN', label: 'Hindi (हिन्दी)', sub: 'Hindi Localization' },
                   ].map((l) => {
                     const isSelected = language === l.id;
                     return (
@@ -2517,61 +2522,65 @@ export function AccountSettings() {
               {/* Admin Accounts List */}
               <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Active Administrative Accounts ({adminAccounts.length + 1})
+                  Active Administrative Accounts ({totalAdminCount})
                 </h3>
 
-                {/* Primary Master Super Admin */}
-                <div className="p-4 sm:p-5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/30 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex items-start sm:items-center space-x-3.5">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md shrink-0">
-                      👨‍💼
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-extrabold text-slate-900 text-sm">
-                          {currentUser?.name || 'Sayem Siraj'}
-                        </span>
-                        <span className="px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider rounded-md">
-                          Primary Super Admin
-                        </span>
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md flex items-center space-x-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          <span>Active</span>
-                        </span>
+                {/* Primary Master Super Admin - Only visible in owner master root workspace, hidden in customer company workspaces */}
+                {isMasterWorkspace && (
+                  <div className="p-4 sm:p-5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/30 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center space-x-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md shrink-0">
+                        👨‍💼
                       </div>
-                      <p className="text-xs text-slate-500 font-mono mt-0.5">
-                        {currentUser?.email || 'sayemsiraj@gmail.com'}
-                      </p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        <span className="text-[10px] font-semibold bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded-md">
-                          ✓ Full Access (All 12 Modules)
-                        </span>
-                        <span className="text-[10px] font-semibold bg-white border border-slate-200 text-indigo-700 px-2 py-0.5 rounded-md">
-                          Master Root Account
-                        </span>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-extrabold text-slate-900 text-sm">
+                            {currentUser?.name || 'Sayem Siraj'}
+                          </span>
+                          <span className="px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider rounded-md">
+                            Primary Super Admin
+                          </span>
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md flex items-center space-x-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>Active</span>
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono mt-0.5">
+                          {currentUser?.email || 'sayemsiraj@gmail.com'}
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          <span className="text-[10px] font-semibold bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded-md">
+                            ✓ Full Access (All 12 Modules)
+                          </span>
+                          <span className="text-[10px] font-semibold bg-white border border-slate-200 text-indigo-700 px-2 py-0.5 rounded-md">
+                            Master Root Account
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center space-x-2 text-xs text-slate-500 lg:text-right shrink-0">
-                    <span className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 text-xs font-semibold">
-                      Protected Account
-                    </span>
+                    <div className="flex items-center space-x-2 text-xs text-slate-500 lg:text-right shrink-0">
+                      <span className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 text-xs font-semibold">
+                        Protected Account
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Custom / Created Admin Accounts */}
-                {adminAccounts.length === 0 ? (
+                {visibleAdmins.length === 0 ? (
                   <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
                     <span className="text-3xl block mb-2">👥</span>
-                    <h4 className="text-sm font-bold text-slate-800">No Secondary Admin Accounts Yet</h4>
+                    <h4 className="text-sm font-bold text-slate-800">
+                      {isMasterWorkspace ? 'No Secondary Admin Accounts Yet' : 'No Admin Accounts Yet'}
+                    </h4>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
                       Click "+ Create Admin Account" above to add HR managers, attendance officers, or department supervisors with restricted module permissions.
                     </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-4">
-                    {adminAccounts.map((admin) => {
+                    {visibleAdmins.map((admin) => {
                       const perms = admin.permissions || ROLE_PERMISSION_PRESETS[admin.role] || ROLE_PERMISSION_PRESETS['Super Admin'];
                       const enabledCount = Object.values(perms).filter(Boolean).length;
 

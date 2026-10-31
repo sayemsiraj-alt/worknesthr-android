@@ -28,7 +28,14 @@ function zktecoDevPlugin() {
             return;
           }
         }
-        if (url.startsWith('/iclock/') || url.startsWith('/zkteco/')) {
+        if (
+          url.startsWith('/iclock/') ||
+          url.startsWith('/zkteco/') ||
+          url.startsWith('/cdata') ||
+          url.startsWith('/fdata') ||
+          url.startsWith('/getrequest') ||
+          url.startsWith('/devicecmd')
+        ) {
           try {
             const { handler } = await import('./netlify/functions/iclock.js');
             const parsedUrl = new URL(url, 'http://localhost:3000');

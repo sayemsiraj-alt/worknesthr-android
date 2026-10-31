@@ -584,11 +584,11 @@ export function AIReportAssistant({ onNavigate }: Props) {
       day: 'numeric',
     });
 
-    const summaryText = `📅 **${isToday ? 'আজকের' : formattedDate} তারিখের (${theDate}) নির্দিষ্ট দৈনিক উপস্থিতি রিপোর্ট:**\n` +
-      `• মোট কর্মচারী: ${filteredEmployees.length} জন | উপস্থিতি (Present): ${presentCount} জন\n` +
-      `• অন-টাইম উপস্থিতি: ${Math.max(0, presentCount - lateCount)} জন | আজ লেট (Late): ${lateCount} জন\n` +
-      `• অনুমোদিত ছুটিতে (Leave): ${leaveCount} জন | সাপ্তাহিক বন্ধ (Weekend): ${weekendOffCount} জন\n` +
-      `• অনুপস্থিত / আন-পাঞ্চড (Absent): ${absentCount} জন`;
+    const summaryText = `📅 **Daily Attendance Report for ${formattedDate} (${theDate})**:\n` +
+      `• Total Employees: ${filteredEmployees.length} | Present: ${presentCount}\n` +
+      `• On-Time Present: ${Math.max(0, presentCount - lateCount)} | Late Arrivals: ${lateCount}\n` +
+      `• Approved Leave: ${leaveCount} | Weekend Off: ${weekendOffCount}\n` +
+      `• Absent / Pending Check-In: ${absentCount}`;
 
     return {
       text: summaryText,
@@ -630,7 +630,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const totalDeduction = anyLate.reduce((s, a) => s + a.lateCut, 0);
 
     return {
-      text: `🚨 ${formatMonthLabel(selectedMonth)} মাসের লেট উপস্থিতি ও ডিসিপ্লিনারি অডিট সম্পন্ন হয়েছে। মোট ${threePlusLate.length} জন কর্মচারী ৩ দিন বা তার বেশি লেট করেছেন (যাদের Employee Panel-এ অটোমেটিক অফিশিয়াল ওয়ার্নিং লেটার হাইলাইট হয়েছে) এবং মোট লেট ডিডাকশন দাঁড়িয়েছে ৳${totalDeduction.toLocaleString()}।`,
+      text: `🚨 Disciplinary & Late Attendance Audit completed for ${formatMonthLabel(selectedMonth)}. Total ${threePlusLate.length} employees have 3 or more late arrivals (with official warning letters on their portal), and total penalty deduction is ৳${totalDeduction.toLocaleString()}.`,
       report: {
         title: `3+ Days Late Disciplinary & Salary Penalty Report — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Rule: Every 3 Unexcused Late Days = 1 Day Salary Deduction • Total Late Penalty: ৳${totalDeduction.toLocaleString()}`,
@@ -679,7 +679,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const totalNet = employeeAnalytics.reduce((s, a) => s + a.netPayable, 0);
 
     return {
-      text: `💰 ${formatMonthLabel(selectedMonth)} মাসের সম্পূর্ণ পেরোল ও স্যালারি শিট তৈরি হয়েছে। মোট ${employeeAnalytics.length} জন কর্মচারীর গ্রস স্যালারি ৳${totalGross.toLocaleString()}, ওভারটাইম পে ৳${totalOt.toLocaleString()}, মোট কর্তন (Deductions) ৳${totalDeductions.toLocaleString()} এবং নিট প্রদেয় বেতন (Net Payable) ৳${totalNet.toLocaleString()}।`,
+      text: `💰 Master Payroll & Salary Sheet generated for ${formatMonthLabel(selectedMonth)}. Total ${employeeAnalytics.length} staff: Gross ৳${totalGross.toLocaleString()}, Overtime Pay ৳${totalOt.toLocaleString()}, Deductions ৳${totalDeductions.toLocaleString()}, and Net Payable ৳${totalNet.toLocaleString()}.`,
       report: {
         title: `Monthly Payroll, Overtime & Deduction Master Sheet — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Branch: ${selectedBranchFilter === 'ALL' ? 'All Branches' : selectedBranchFilter} • Net Payable: ৳${totalNet.toLocaleString()}`,
@@ -726,7 +726,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const zeroLateStaff = ranked.filter(a => a.unexcusedLate === 0);
 
     return {
-      text: `🏆 ${formatMonthLabel(selectedMonth)} মাসের সেরা নিয়মানুবর্তী ও টপ পারফর্মার র‍্যাঙ্কিং তৈরি হয়েছে! মোট ${zeroLateStaff.length} জন কর্মচারী এই মাসে ০ দিন আন-এক্সকিউজড লেট রেখেছেন। র‍্যাঙ্কিংয়ে ১ নম্বরে আছেন ${ranked[0]?.emp.name || 'N/A'} (স্কোর: ${ranked[0]?.punctualityScore || 100}/100)।`,
+      text: `🏆 Top Punctual & Best Performer Ranking generated for ${formatMonthLabel(selectedMonth)}! Total ${zeroLateStaff.length} employees had zero unexcused late arrivals this month. #1 Ranked is ${ranked[0]?.emp.name || 'N/A'} (Score: ${ranked[0]?.punctualityScore || 100}/100).`,
       report: {
         title: `Top Punctual & Best Performer Ranking — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Evaluated by Punctuality (0 Late), Attendance Regularity, and Overtime Contribution`,
@@ -778,7 +778,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const totalWkPay = otStaff.reduce((s, a) => s + a.weekendAllowance, 0);
 
     return {
-      text: `⏱️ ${formatMonthLabel(selectedMonth)} মাসের ওভারটাইম ও উইকেন্ড ডিউটি রিপোর্ট তৈরি হয়েছে। মোট ওভারটাইম হয়েছে ${totalOtHours.toFixed(1)} ঘণ্টা (৳${totalOtPay.toLocaleString()}) এবং উইকেন্ড ডিউটি ভাতা ৳${totalWkPay.toLocaleString()}।`,
+      text: `⏱️ Overtime & Weekend Duty Report generated for ${formatMonthLabel(selectedMonth)}. Total overtime: ${totalOtHours.toFixed(1)} hours (৳${totalOtPay.toLocaleString()}) and weekend duty allowance: ৳${totalWkPay.toLocaleString()}.`,
       report: {
         title: `Overtime & Weekend Duty Financial Report — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Total Overtime: ${totalOtHours.toFixed(1)} Hours • Total OT + Weekend Cost: ৳${(totalOtPay + totalWkPay).toLocaleString()}`,
@@ -818,7 +818,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const pendingWaivers = attendanceRequests.filter(r => r.status === 'pending');
 
     return {
-      text: `🏖️ ছুটি ও লেট ওয়েভার অডিট রিপোর্ট: মোট ${leaveRequests.length}টি ছুটির আবেদনের মধ্যে ${pendingLeaves.length}টি পেন্ডিং, ${approvedLeaves.length}টি অনুমোদিত এবং ${withFiles.length}টি আবেদনের সাথে Word/PDF দরখাস্ত সংযুক্ত রয়েছে। পাশাপাশি ${pendingWaivers.length}টি লেট ওয়েভার আবেদন পেন্ডিং আছে।`,
+      text: `🏖️ Leave & Waiver Audit Report: ${leaveRequests.length} total leave requests (${pendingLeaves.length} pending, ${approvedLeaves.length} approved, ${withFiles.length} with Word/PDF documents), and ${pendingWaivers.length} pending late waivers.`,
       report: {
         title: `Leave Applications & Supporting Document Audit Report`,
         subtitle: `Total Leave Requests: ${leaveRequests.length} • Pending Approval: ${pendingLeaves.length} • Word/PDF Attached: ${withFiles.length}`,
@@ -871,7 +871,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     });
 
     return {
-      text: `🏢 ব্রাঞ্চ ও ডিপার্টমেন্ট ভিত্তিক জনবল এবং মাসিক বেতন খরচের ব্রেকডাউন তৈরি হয়েছে। বর্তমানে মোট ${branches.length}টি ব্রাঞ্চ এবং ${departments.length}টি ডিপার্টমেন্ট সক্রিয় আছে।`,
+      text: `🏢 Branch & Department Headcount and Monthly Payroll Breakdown generated. Currently ${branches.length} branches and ${departments.length} departments are active.`,
       report: {
         title: `Department & Branch Workforce & Financial Breakdown — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Total Active Branches: ${branches.length} • Total Active Departments: ${departments.length}`,
@@ -889,7 +889,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
   const buildMissingCheckoutAuditReport = (): { text: string; report: ReportTableData } => {
     const flagged = employeeAnalytics.filter(a => a.missingCheckoutDays > 0 || a.absentDays > 0);
     return {
-      text: `⚠️ অ্যাটেনডেন্স মিসিং পাঞ্চ ও অনুপস্থিতি অডিট: ${formatMonthLabel(selectedMonth)} মাসে ${flagged.length} জন কর্মচারীর মিসিং চেক-আউট অথবা অনুপস্থিতি (Absent) রেকর্ড পাওয়া গেছে।`,
+      text: `⚠️ Missing Checkout & Absenteeism Audit: Found ${flagged.length} employees with missing checkout punches or recorded absences in ${formatMonthLabel(selectedMonth)}.`,
       report: {
         title: `Missing Check-Out & Absenteeism Audit — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Identifies incomplete biometric/camera punches and unexcused absences`,
@@ -930,7 +930,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
 
   const buildSingleEmployeeDossier = (item: (typeof employeeAnalytics)[0]): { text: string; report: ReportTableData } => {
     return {
-      text: `👤 কর্মচারী **${item.emp.name}** (${item.emp.employeeId} • ${item.emp.designation}, ${item.emp.department})-এর ${formatMonthLabel(selectedMonth)} মাসের ৩৬০° পূর্ণাঙ্গ রিপোর্ট তৈরি হয়েছে। উপস্থিত: ${item.presentDays} দিন, লেট: ${item.totalLate} দিন (আন-এক্সকিউজড: ${item.unexcusedLate} দিন), ওভারটাইম: ${item.overtimeHours} ঘণ্টা এবং নিট বেতন: ৳${item.netPayable.toLocaleString()}।`,
+      text: `👤 Comprehensive 360° Profile & Audit Report for **${item.emp.name}** (${item.emp.employeeId} • ${item.emp.designation}, ${item.emp.department}) in ${formatMonthLabel(selectedMonth)}. Present: ${item.presentDays} days, Late: ${item.totalLate} days, OT: ${item.overtimeHours} hrs, Net Salary: ৳${item.netPayable.toLocaleString()}.`,
       report: {
         title: `360° Employee Dossier: ${item.emp.name} (${item.emp.employeeId})`,
         subtitle: `${item.emp.designation} • ${item.emp.department} • Branch: ${item.emp.branch || 'Head Office'} • Month: ${formatMonthLabel(selectedMonth)}`,
@@ -969,7 +969,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const totalLateCut = employeeAnalytics.reduce((s, a) => s + a.lateCut, 0);
 
     return {
-      text: `📊 **${currentCompany?.name || 'WorkNest HR'} — ৩৬০° এক্সিকিউটিভ এইচআর সামারি রিপোর্ট (${formatMonthLabel(selectedMonth)}):**\n• মোট কর্মচারী: ${employeeAnalytics.length} জন (আজ উপস্থিত: ${presentToday} জন)\n• ৩+ দিন লেট (Warning Issued): ${threeLateCount} জন\n• মাসিক নিট স্যালারি বাজেট: ৳${totalNet.toLocaleString()} (ওভারটাইম: ৳${totalOt.toLocaleString()}, লেট কর্তন সাশ্রয়: ৳${totalLateCut.toLocaleString()})`,
+      text: `📊 **${currentCompany?.name || 'WorkNest HR'} — 360° Executive HR Summary Report (${formatMonthLabel(selectedMonth)}):**\n• Total Employees: ${employeeAnalytics.length} (Present Today: ${presentToday})\n• 3+ Days Late Warning Issued: ${threeLateCount} Staff\n• Net Payroll Budget: ৳${totalNet.toLocaleString()} (OT: ৳${totalOt.toLocaleString()}, Late Penalty Savings: ৳${totalLateCut.toLocaleString()})`,
       report: {
         title: `Executive 360° Company HR & Payroll Summary — ${formatMonthLabel(selectedMonth)}`,
         subtitle: `Comprehensive overview of Attendance, Punctuality, Leaves, and Payroll for ${currentCompany?.name || 'WorkNest HR'}`,
@@ -1234,7 +1234,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
       id: `u_${Date.now()}`,
       sender: 'user',
       time: nowTime,
-      text: isToday ? 'আজকের তারিখের দৈনিক উপস্থিতি রিপোর্ট দাও' : `${newDateStr} তারিখের দৈনিক উপস্থিতি রিপোর্ট দাও`,
+      text: isToday ? "Show today's daily attendance report" : `Show daily attendance report for ${newDateStr}`,
     };
     const res = buildDailyAttendanceReport(newDateStr);
     const aiMsg: ChatItem = {
@@ -1298,7 +1298,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setActionFeedbackMsg('আপনার ব্রাউজারে ভয়েস টাইপিং সাপোর্ট করছে না, অনুগ্রহ করে টেক্সট বক্সে টাইপ করুন।');
+      setActionFeedbackMsg('Voice typing is not supported in this browser, please type in the query input box.');
       setTimeout(() => setActionFeedbackMsg(''), 4000);
       return;
     }
@@ -1495,7 +1495,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
       <div style="font-size:10px;text-transform:uppercase;color:#64748b;font-weight:700;">Recipient / To:</div>
       <div style="font-weight:800;font-size:14px;">${generatedOfficialLetter.recipient}</div>
     </div>
-    <div class="subject">বিষয় / SUBJECT: ${generatedOfficialLetter.subject}</div>
+    <div class="subject">SUBJECT: ${generatedOfficialLetter.subject}</div>
     <div class="body-box">${generatedOfficialLetter.bodyBangla}</div>
     <div class="body-box" style="background:#f8fafc;color:#334155;">${generatedOfficialLetter.bodyEnglish}</div>
     <div class="sig-row">
@@ -1557,8 +1557,8 @@ export function AIReportAssistant({ onNavigate }: Props) {
         fromAvatar: '🚨',
         to: item.emp.name,
         toEmployeeId: item.emp.id,
-        subject: `🚨 OFFICIAL WARNING LETTER: ${item.totalLate} Days Late in ${formatMonthLabel(selectedMonth)}`,
-        content: `প্রিয় ${item.emp.name} (${item.emp.employeeId}), ${formatMonthLabel(selectedMonth)} মাসে আপনার মোট ${item.totalLate} দিন লেট (Late Arrival) রেকর্ড হয়েছে (${item.lateDates.map(d => d.date).join(', ')})। কোম্পানির নিয়ম অনুযায়ী ৩ দিন লেটের কারণে আপনার ${item.latePenaltyDays} দিনের বেতন কর্তন (৳${item.lateCut.toLocaleString()}) প্রযোজ্য হয়েছে। আগামী দিন থেকে নির্ধারিত সময়ে অফিসে উপস্থিত হওয়ার জন্য বিশেষভাবে সতর্ক করা হলো।`,
+        subject: `🚨 OFFICIAL WARNING NOTICE: ${item.totalLate} Days Late in ${formatMonthLabel(selectedMonth)}`,
+        content: `Dear ${item.emp.name} (${item.emp.employeeId}), our attendance records indicate ${item.totalLate} late check-in instances during ${formatMonthLabel(selectedMonth)} (${item.lateDates.map(d => d.date).join(', ')}). Under company policy (3 late days = 1 day salary deduction), a penalty deduction of ৳${item.lateCut.toLocaleString()} applies. Please ensure strict punctuality going forward.`,
         unread: true,
       });
     }
@@ -1572,7 +1572,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
     });
 
     setActionFeedbackMsg(
-      `✅ মোট ${targets.length} জন (৩+ দিন লেট) কর্মচারীর প্যানেলে অফিশিয়াল ওয়ার্নিং মেসেজ ও নোটিফিকেশন পাঠানো হয়েছে!`
+      `✅ Official warning notices sent to all ${targets.length} employee portals successfully!`
     );
     setTimeout(() => setActionFeedbackMsg(''), 6000);
   };
@@ -1591,13 +1591,13 @@ export function AIReportAssistant({ onNavigate }: Props) {
         to: item.emp.name,
         toEmployeeId: item.emp.id,
         subject: `🏆 Punctuality Appreciation — ${formatMonthLabel(selectedMonth)}`,
-        content: `অভিনন্দন ${item.emp.name}! ${formatMonthLabel(selectedMonth)} মাসে আপনার সময়ানুবর্তিতা (০ আন-এক্সকিউজড লেট, স্কোর: ${item.punctualityScore}/100) অত্যন্ত প্রশংসনীয়। আপনার নিষ্ঠার জন্য ধন্যবাদ!`,
+        content: `Congratulations ${item.emp.name}! You achieved 100% punctuality (zero unexcused late arrivals, Score: ${item.punctualityScore}/100) during ${formatMonthLabel(selectedMonth)}. Management commends your commitment and professionalism!`,
         unread: true,
       });
     }
 
     setActionFeedbackMsg(
-      `🏆 মোট ${targets.length} জন নিয়মানুবর্তী কর্মচারীর প্যানেলে প্রশংসাপত্র মেসেজ পাঠানো হয়েছে!`
+      `🏆 Appreciation message sent to all ${targets.length} punctual staff successfully!`
     );
     setTimeout(() => setActionFeedbackMsg(''), 6000);
   };
@@ -1607,9 +1607,9 @@ export function AIReportAssistant({ onNavigate }: Props) {
   // =========================================================================
   const [selectedLetterType, setSelectedLetterType] = useState<LetterTemplateType>('late_warning');
   const [selectedLetterEmpId, setSelectedLetterEmpId] = useState<string>(() => employees[0]?.id || '');
-  const [customNoticeSubject, setCustomNoticeSubject] = useState('অফিস সময়সূচি ও শৃঙ্খলা সংক্রান্ত বিশেষ বিজ্ঞপ্তি');
+  const [customNoticeSubject, setCustomNoticeSubject] = useState('Official Notice: Office Timings & Punctuality Policy');
   const [customNoticeBody, setCustomNoticeBody] = useState(
-    'সকল কর্মকর্তা ও কর্মচারীদের জানানো যাচ্ছে যে, আগামী কার্যদিবস থেকে নির্ধারিত শিফট টাইমের মধ্যে অফিসে উপস্থিত হয়ে বায়োমেট্রিক/ক্যামেরা পাঞ্চ সম্পন্ন করার জন্য অনুরোধ করা হলো।'
+    'All employees and staff are requested to ensure timely arrival and complete biometric check-in within designated shift timings.'
   );
   const [incrementAmountInput, setIncrementAmountInput] = useState<number>(3000);
 
@@ -1648,8 +1648,8 @@ export function AIReportAssistant({ onNavigate }: Props) {
         refNo: refPrefix,
         title: 'OFFICIAL LATE ATTENDANCE WARNING & SHOW-CAUSE NOTICE',
         recipient: `${emp.name} (${emp.employeeId}) — ${emp.designation}, ${emp.department}`,
-        subject: `${formatMonthLabel(selectedMonth)} মাসে ${lateCount} দিন বিলম্বে অফিসে উপস্থিত হওয়ার কারণে অফিশিয়াল সতর্কবার্তা (Official Warning Letter for Late Attendance)।`,
-        bodyBangla: `জনাব/জনাবা ${emp.name},\n\nঅফিস অ্যাটেনডেন্স ডাটাবেস পর্যালোচনা করে দেখা গেছে যে, আপনি চলমান ${formatMonthLabel(selectedMonth)} মাসে মোট ${lateCount} দিন (${lateDatesList}) নির্ধারিত শিফট ও গ্রেস টাইমের পরে অফিসে প্রবেশ করেছেন।\n\nকোম্পানির মানবসম্পদ নীতিমালা অনুযায়ী প্রতি ৩ দিন আন-এক্সকিউজড লেটের জন্য ১ দিনের বেতন কর্তন (আনুমানিক ৳${cutAmt.toLocaleString()}) প্রযোজ্য। আপনাকে পরবর্তী কার্যদিবস থেকে সঠিক সময়ে অফিসে উপস্থিত থাকার জন্য কঠোরভাবে নির্দেশ প্রদান করা হলো।`,
+        subject: `Official Warning Notice for Repeated Late Attendance (${formatMonthLabel(selectedMonth)})`,
+        bodyBangla: `Dear ${emp.name},\n\nOur attendance records indicate that you have arrived after the scheduled grace time on ${lateCount} working days (${lateDatesList}) during ${formatMonthLabel(selectedMonth)}.\n\nUnder company HR policy, each 3 unexcused late arrivals incur a 1-day salary deduction (approx. BDT ${cutAmt.toLocaleString()}). You are strictly advised to maintain regular punctuality.`,
         bodyEnglish: `Dear ${emp.name},\n\nThis letter serves as an official disciplinary warning regarding your repeated late arrivals during ${formatMonthLabel(selectedMonth)}. Our biometric/attendance records indicate ${lateCount} late check-in instance(s) (${lateDatesList}). In accordance with company policy (3 late arrivals = 1 day salary deduction), a deduction of BDT ${cutAmt.toLocaleString()} is applicable. You are strictly advised to maintain punctuality going forward.`,
       };
     }
@@ -1659,8 +1659,8 @@ export function AIReportAssistant({ onNavigate }: Props) {
         refNo: refPrefix,
         title: 'EMPLOYEE OF THE MONTH & PUNCTUALITY APPRECIATION LETTER',
         recipient: `${emp.name} (${emp.employeeId}) — ${emp.designation}, ${emp.department}`,
-        subject: `${formatMonthLabel(selectedMonth)} মাসে অসাধারণ সময়ানুবর্তিতা ও কর্মদক্ষতার জন্য অফিশিয়াল প্রশংসাপত্র (Letter of Appreciation)।`,
-        bodyBangla: `প্রিয় ${emp.name},\n\nঅত্যন্ত আনন্দের সাথে জানানো যাচ্ছে যে, ${formatMonthLabel(selectedMonth)} মাসে আপনার শতভাগ সময়ানুবর্তিতা (Punctuality Score: ${empItem?.punctualityScore || 100}/100), নিয়মিত উপস্থিতি (${empItem?.presentDays || 26} দিন) এবং কাজের প্রতি একনিষ্ঠতার জন্য আপনাকে ${companyName}-এর পক্ষ থেকে আন্তরিক অভিনন্দন ও প্রশংসাপত্র প্রদান করা হচ্ছে।\n\nআমরা আপনার উজ্জ্বল ভবিষ্যৎ ও উত্তরোত্তর সাফল্য কামনা করি।`,
+        subject: `Letter of Appreciation for Exceptional Punctuality & Performance (${formatMonthLabel(selectedMonth)})`,
+        bodyBangla: `Dear ${emp.name},\n\nManagement is pleased to present you with this Certificate of Appreciation for your 100% punctuality (Score: ${empItem?.punctualityScore || 100}/100) and dedicated attendance (${empItem?.presentDays || 26} days) in ${formatMonthLabel(selectedMonth)}.\n\nWe commend your professional excellence and wish you continued success with ${companyName}.`,
         bodyEnglish: `Dear ${emp.name},\n\nOn behalf of the management of ${companyName}, we are delighted to present you with this Letter of Appreciation for your outstanding punctuality (${empItem?.punctualityScore || 100}% score) and dedication during ${formatMonthLabel(selectedMonth)}. Thank you for being a role model for the team!`,
       };
     }
@@ -1672,8 +1672,8 @@ export function AIReportAssistant({ onNavigate }: Props) {
         refNo: refPrefix,
         title: 'OFFICIAL SALARY CERTIFICATE & EMPLOYMENT NOC',
         recipient: `To Whom It May Concern (Re: ${emp.name}, ID: ${emp.employeeId})`,
-        subject: `প্রত্যয়নপত্র ও স্যালারি সার্টিফিকেট (Official Employment & Monthly Salary Certificate for ${emp.name})।`,
-        bodyBangla: `এই মর্মে প্রত্যয়ন করা যাচ্ছে যে, জনাব/জনাবা ${emp.name} (Employee ID: ${emp.employeeId}), পদবি: ${emp.designation}, বিভাগ: ${emp.department}, গত ${emp.joinDate || 'N/A'} তারিখ থেকে আমাদের প্রতিষ্ঠান "${companyName}"-এ একজন স্থায়ী ও নিয়মিত কর্মচারী হিসেবে কর্মরত আছেন।\n\nতার বর্তমান মাসিক মোট বেতন (Gross Salary) ৳${gross.toLocaleString()} টাকা (মূল বেতন / Basic: ৳${basic.toLocaleString()} টাকা এবং অন্যান্য ভাতা ৳${(gross - basic).toLocaleString()} টাকা)। আমাদের জানামতে তিনি একজন সৎ ও দায়িত্বশীল ব্যক্তি।`,
+        subject: `Official Employment & Monthly Salary Certificate for ${emp.name}`,
+        bodyBangla: `This is to certify that ${emp.name} (Employee Code: ${emp.employeeId}), Designation: ${emp.designation}, Department: ${emp.department}, has been employed with ${companyName} since ${emp.joinDate || 'N/A'}.\n\nCurrent monthly Gross Salary: BDT ${gross.toLocaleString()} (Basic Salary: BDT ${basic.toLocaleString()} and allowances: BDT ${(gross - basic).toLocaleString()}).`,
         bodyEnglish: `This is to certify that ${emp.name} (Employee Code: ${emp.employeeId}) has been employed with ${companyName} since ${emp.joinDate || 'N/A'} as ${emp.designation} in the ${emp.department} Department.\n\nHis/Her current monthly Gross Salary is BDT ${gross.toLocaleString()} (Basic Salary: BDT ${basic.toLocaleString()} plus standard allowances of BDT ${(gross - basic).toLocaleString()}). This certificate is issued upon the employee's request for official/banking purposes.`,
       };
     }
@@ -1682,10 +1682,10 @@ export function AIReportAssistant({ onNavigate }: Props) {
       const gross = empItem?.grossSalary || Number(emp.grossSalary) || 30000;
       return {
         refNo: refPrefix,
-        title: 'LETTER OF APPOINTMENT (অফিশিয়াল নিয়োগপত্র)',
+        title: 'LETTER OF APPOINTMENT',
         recipient: `${emp.name} (${emp.employeeId}) — ${emp.designation}, ${emp.department}`,
-        subject: `${companyName}-এ "${emp.designation}" পদে নিয়োগপত্র (Official Letter of Appointment)।`,
-        bodyBangla: `প্রিয় ${emp.name},\n\nআনন্দের সাথে জানানো যাচ্ছে যে, কর্তৃপক্ষের সিদ্ধান্ত অনুযায়ী আপনাকে "${companyName}"-এর ${emp.department} বিভাগে "${emp.designation}" পদে নিয়োগ প্রদান করা হলো। আপনার যোগদানের তারিখ ${emp.joinDate || todayStr} এবং আপনার মাসিক সর্বসাকুল্যে বেতন (Gross Salary) হবে ৳${gross.toLocaleString()} টাকা।\n\nকোম্পানির নির্ধারিত শিফট, বায়োমেট্রিক উপস্থিতি এবং মানবসম্পদ নীতিমালা আপনার ক্ষেত্রে প্রযোজ্য হবে।`,
+        subject: `Appointment Letter for the position of "${emp.designation}" at ${companyName}`,
+        bodyBangla: `Dear ${emp.name},\n\nWe are pleased to appoint you as "${emp.designation}" in the ${emp.department} Department at ${companyName}, effective from ${emp.joinDate || todayStr}. Your monthly gross compensation will be BDT ${gross.toLocaleString()}, subject to company attendance and HR policies.`,
         bodyEnglish: `Dear ${emp.name},\n\nWe are pleased to appoint you as "${emp.designation}" in the ${emp.department} Department at ${companyName}, effective from ${emp.joinDate || todayStr}. Your monthly gross compensation will be BDT ${gross.toLocaleString()}, subject to company attendance and HR policies.`,
       };
     }
@@ -1695,18 +1695,18 @@ export function AIReportAssistant({ onNavigate }: Props) {
       const newGross = oldGross + (Number(incrementAmountInput) || 0);
       return {
         refNo: refPrefix,
-        title: 'SALARY INCREMENT & PERFORMANCE LETTER (বেতন বৃদ্ধির চিঠি)',
+        title: 'SALARY INCREMENT & PERFORMANCE LETTER',
         recipient: `${emp.name} (${emp.employeeId}) — ${emp.designation}, ${emp.department}`,
-        subject: `বার্ষিক কর্মমূল্যায়ন ও মাসিক বেতন বৃদ্ধি প্রসঙ্গে (Official Salary Increment Notification)।`,
-        bodyBangla: `প্রিয় ${emp.name},\n\nআপনার নিরলস পরিশ্রম, সময়ানুবর্তিতা এবং সন্তোষজনক পারফরম্যান্সের স্বীকৃতিস্বরূপ কর্তৃপক্ষ আপনার মাসিক বেতন ৳${(Number(incrementAmountInput) || 0).toLocaleString()} টাকা বৃদ্ধি করার সিদ্ধান্ত গ্রহণ করেছে।\n\nপূর্ববর্তী গ্রস স্যালারি: ৳${oldGross.toLocaleString()} টাকা\nবর্ধিত নতুন গ্রস স্যালারি: ৳${newGross.toLocaleString()} টাকা\n\nআপনার নিষ্ঠা ও অবদানের জন্য আন্তরিক ধন্যবাদ।`,
+        subject: `Official Salary Increment Notification for ${emp.name}`,
+        bodyBangla: `Dear ${emp.name},\n\nIn recognition of your performance and punctuality at ${companyName}, management is pleased to award you a monthly salary increment of BDT ${(Number(incrementAmountInput) || 0).toLocaleString()}.\n\nPrevious Gross Salary: BDT ${oldGross.toLocaleString()}\nRevised Gross Salary: BDT ${newGross.toLocaleString()}\n\nThank you for your continued dedication.`,
         bodyEnglish: `Dear ${emp.name},\n\nIn recognition of your dedicated performance and punctuality at ${companyName}, management is pleased to grant you a monthly salary increment of BDT ${(Number(incrementAmountInput) || 0).toLocaleString()}. Your revised monthly Gross Salary is now BDT ${newGross.toLocaleString()} (previously BDT ${oldGross.toLocaleString()}).`,
       };
     }
 
     return {
       refNo: `WN/HR/NOTICE/${todayStr.replace(/-/g, '')}`,
-      title: 'OFFICIAL HR NOTICE & CIRCULAR (অফিস বিজ্ঞপ্তি)',
-      recipient: 'সকল কর্মকর্তা ও কর্মচারীবৃন্দ (All Employees & Departments)',
+      title: 'OFFICIAL HR NOTICE & CIRCULAR',
+      recipient: 'All Employees & Departments',
       subject: customNoticeSubject,
       bodyBangla: customNoticeBody,
       bodyEnglish: `All employees are requested to take note of the above official circular issued by Human Resources & Administration, ${companyName}.`,
@@ -1728,11 +1728,11 @@ export function AIReportAssistant({ onNavigate }: Props) {
         from: currentUser?.name || 'HR Administration',
         fromAvatar: '📢',
         to: 'All Employees',
-        subject: `📢 অফিস নোটিশ: ${generatedOfficialLetter.subject}`,
-        content: `${generatedOfficialLetter.bodyBangla}\n\n(Ref: ${generatedOfficialLetter.refNo})`,
+        subject: `📢 Office Notice: ${generatedOfficialLetter.subject}`,
+        content: `${generatedOfficialLetter.bodyEnglish || generatedOfficialLetter.bodyBangla}\n\n(Ref: ${generatedOfficialLetter.refNo})`,
         unread: true,
       });
-      setActionFeedbackMsg('✅ অফিস নোটিশটি সকল কর্মচারীর Employee Panel-এ পাঠিয়ে দেওয়া হয়েছে!');
+      setActionFeedbackMsg('✅ Office notice broadcasted to all employees successfully!');
     } else if (selectedLetterEmpAnalytics) {
       await sendMessage({
         from: currentUser?.name || 'HR Administration',
@@ -1740,11 +1740,11 @@ export function AIReportAssistant({ onNavigate }: Props) {
         to: selectedLetterEmpAnalytics.emp.name,
         toEmployeeId: selectedLetterEmpAnalytics.emp.id,
         subject: `📜 ${generatedOfficialLetter.title}`,
-        content: `${generatedOfficialLetter.subject}\n\n${generatedOfficialLetter.bodyBangla}\n\n(Ref: ${generatedOfficialLetter.refNo})`,
+        content: `${generatedOfficialLetter.subject}\n\n${generatedOfficialLetter.bodyEnglish || generatedOfficialLetter.bodyBangla}\n\n(Ref: ${generatedOfficialLetter.refNo})`,
         unread: true,
       });
       setActionFeedbackMsg(
-        `✅ "${generatedOfficialLetter.title}" চিঠিটি ${selectedLetterEmpAnalytics.emp.name}-এর Employee Panel-এ সরাসরি পাঠানো হয়েছে!`
+        `✅ "${generatedOfficialLetter.title}" sent directly to ${selectedLetterEmpAnalytics.emp.name}'s Employee Portal!`
       );
     }
     setTimeout(() => setActionFeedbackMsg(''), 6000);
@@ -1771,14 +1771,14 @@ export function AIReportAssistant({ onNavigate }: Props) {
               <span>WorkNest Smart AI HR Assistant &amp; Report Studio</span>
             </h1>
             <p className="text-xs sm:text-sm text-indigo-200 max-w-3xl">
-              চ্যাটবটকে বাংলা, বাংলিশ বা ইংরেজিতে বললেই মুহূর্তের মধ্যে লাইভ অ্যাটেনডেন্স, ৩ দিন লেট লিস্ট, পেরোল শিট, ওভারটাইম, কর্মচারীর ৩৬০° প্রোফাইল এবং অফিশিয়াল HR চিঠি তৈরি করে দেবে।
+              Ask questions or generate reports for live attendance, late lists, payroll sheets, overtime analysis, 360° employee audits, and official HR letters.
             </p>
           </div>
 
           {/* Date, Month & Branch Selectors */}
           <div className="flex flex-wrap items-center gap-2 shrink-0 bg-white/10 p-2.5 rounded-2xl border border-white/15">
             <div>
-              <label className="text-[10px] font-bold uppercase text-indigo-200 block">Report Date (তারিখ)</label>
+              <label className="text-[10px] font-bold uppercase text-indigo-200 block">Report Date</label>
               <div className="flex items-center gap-1 mt-0.5">
                 <input
                   type="date"
@@ -1840,7 +1840,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
             }`}
           >
             <span>💬</span>
-            <span>AI Report Chatbot (চ্যাট ও লাইভ রিপোর্ট)</span>
+            <span>AI Report Chatbot</span>
           </button>
 
           <button
@@ -1853,7 +1853,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
             }`}
           >
             <span>📜</span>
-            <span>AI HR Letter &amp; Notice Generator (চিঠি ও নোটিশ মেকার)</span>
+            <span>AI HR Letter &amp; Notice Generator</span>
           </button>
 
           <button
@@ -1866,7 +1866,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
             }`}
           >
             <span>⚡</span>
-            <span>Smart Auto-Audit &amp; 1-Click Actions (অটো অডিট)</span>
+            <span>Smart Auto-Audit &amp; 1-Click Actions</span>
           </button>
         </div>
       </div>
@@ -1906,53 +1906,53 @@ export function AIReportAssistant({ onNavigate }: Props) {
                 {[
                   {
                     icon: '📅',
-                    label: 'আজকের নির্দিষ্ট দৈনিক উপস্থিতি রিপোর্ট (Today)',
-                    prompt: 'আজকের তারিখের দৈনিক উপস্থিতি রিপোর্ট দাও',
+                    label: "Today's Daily Attendance Report",
+                    prompt: 'Show today daily attendance report',
                   },
                   {
                     icon: '📆',
-                    label: 'গতকালকের দৈনিক উপস্থিতি রিপোর্ট (Yesterday)',
-                    prompt: 'গতকালকের উপস্থিতি রিপোর্ট দাও',
+                    label: "Yesterday's Daily Attendance Report",
+                    prompt: 'Show yesterday attendance report',
                   },
                   {
                     icon: '🚨',
-                    label: '৩+ দিন লেট ও বেতন কর্তন (Warning) লিস্ট',
-                    prompt: 'এই মাসে কারা কারা ৩ দিন বা তার বেশি লেট করেছে তাদের লিস্ট দাও',
+                    label: '3+ Days Late & Deduction Warning List',
+                    prompt: 'List all employees with 3 or more late days this month',
                   },
                   {
                     icon: '💰',
-                    label: 'এই মাসের ফুল স্যালারি ও পেরোল মাস্টার শিট',
-                    prompt: 'এই মাসের ফুল স্যালারি ও ওভারটাইম পেরোল রিপোর্ট দাও',
+                    label: 'Monthly Master Payroll & Salary Sheet',
+                    prompt: 'Generate this month master payroll and salary report',
                   },
                   {
                     icon: '🏆',
-                    label: 'সেরা নিয়মানুবর্তী (Top Performer) র‍্যাঙ্কিং',
-                    prompt: 'সেরা নিয়মানুবর্তী ও টপ পারফর্মার কর্মচারীদের তালিকা দাও',
+                    label: 'Top Performers & Punctuality Ranking',
+                    prompt: 'Show punctuality and top performer ranking',
                   },
                   {
                     icon: '⏱️',
-                    label: 'ওভারটাইম ও উইকেন্ড ডিউটি রিপোর্ট',
-                    prompt: 'এই মাসের ওভারটাইম এবং উইকেন্ড ডিউটি ভাতা রিপোর্ট দাও',
+                    label: 'Overtime & Weekend Duty Report',
+                    prompt: 'Show monthly overtime hours and payout report',
                   },
                   {
                     icon: '🏖️',
-                    label: 'ছুটির আবেদন (Word/PDF) ও ওয়েভার অডিট',
-                    prompt: 'সকল ছুটির আবেদন ও পেন্ডিং লিভ রিপোর্ট দাও',
+                    label: 'Leave Requests & Waiver Audit',
+                    prompt: 'Show all leave requests and pending applications audit',
                   },
                   {
                     icon: '🏢',
-                    label: 'ব্রাঞ্চ ও ডিপার্টমেন্ট ভিত্তিক খরচ ও জনবল',
-                    prompt: 'ব্রাঞ্চ ও ডিপার্টমেন্ট অনুযায়ী কর্মচারীদের রিপোর্ট দাও',
+                    label: 'Branch & Department Headcount Summary',
+                    prompt: 'Breakdown staff and payroll by branch and department',
                   },
                   {
                     icon: '⚠️',
-                    label: 'চেক-আউট মিসিং ও অনুপস্থিতি অডিট',
-                    prompt: 'যাদের চেক-আউট মিসিং এবং অ্যাবসেন্ট আছে তাদের অডিট রিপোর্ট দাও',
+                    label: 'Missing Checkout & Absenteeism Audit',
+                    prompt: 'Show missing punch checkout and absenteeism list',
                   },
                   {
                     icon: '📊',
-                    label: 'কোম্পানির ৩৬০° এক্সিকিউটিভ এইচআর সামারি',
-                    prompt: 'কোম্পানির সম্পূর্ণ ৩৬০ ডিগ্রি এক্সিকিউটিভ সামারি রিপোর্ট দাও',
+                    label: '360° Executive HR Summary',
+                    prompt: 'Provide executive summary report for all HR operations',
                   },
                 ].map((item, idx) => (
                   <button
@@ -1980,14 +1980,14 @@ export function AIReportAssistant({ onNavigate }: Props) {
                 </span>
               </div>
               <p className="text-[11px] text-slate-500">
-                যেকোনো কর্মচারীর উপর ক্লিক করলে তার সম্পূর্ণ মাসের উপস্থিতি, লেট, ওভারটাইম ও স্যালারি রিপোর্ট তৈরি হবে:
+                Click on any employee to generate their full monthly attendance, late, overtime, and salary profile report:
               </p>
               <div className="space-y-1">
                 {filteredEmployees.map(emp => (
                   <button
                     key={emp.id}
                     type="button"
-                    onClick={() => handleSendQuery(`${emp.name} (${emp.employeeId}) এর ফুল রিপোর্ট দাও`)}
+                    onClick={() => handleSendQuery(`Show full audit report for ${emp.name} (${emp.employeeId})`)}
                     className="w-full text-left px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-purple-50 hover:border-purple-200 text-xs flex items-center justify-between group cursor-pointer transition-all"
                   >
                     <div className="min-w-0 pr-2">
@@ -2030,7 +2030,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                     className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center space-x-1.5 shadow-xs animate-pulse"
                   >
                     <span>🔇</span>
-                    <span>ভয়েস অফ করুন (Stop Voice)</span>
+                    <span>Stop Voice</span>
                   </button>
                 )}
                 {chatHistory.length > 0 && (
@@ -2053,7 +2053,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
                   <span className="text-sm">📅</span>
-                  <span>তারিখ ফিল্টার (Date Filter):</span>
+                  <span>Date Filter:</span>
                 </span>
                 <input
                   type="date"
@@ -2064,7 +2064,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                   className="px-2.5 py-1 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
                 <span className="text-[11px] font-semibold text-slate-500">
-                  {selectedDate === todayStr ? '(আজকের লাইভ ডেটা)' : `(${selectedDate})`}
+                  {selectedDate === todayStr ? "(Today's Live Data)" : `(${selectedDate})`}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -2074,7 +2074,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                   className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-xs font-bold text-slate-700 hover:text-indigo-800 cursor-pointer shadow-2xs transition-all"
                   title="Previous Day"
                 >
-                  ◄ আগের দিন
+                  ◄ Previous Day
                 </button>
                 <button
                   type="button"
@@ -2085,7 +2085,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                       : 'bg-white hover:bg-indigo-50 border border-slate-200 text-slate-700'
                   }`}
                 >
-                  আজকে (Today)
+                  Today
                 </button>
                 <button
                   type="button"
@@ -2093,7 +2093,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                   className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-xs font-bold text-slate-700 hover:text-indigo-800 cursor-pointer shadow-2xs transition-all"
                   title="Next Day"
                 >
-                  পরের দিন ►
+                  Next Day ►
                 </button>
               </div>
             </div>
@@ -2115,7 +2115,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                       ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
                       : 'bg-white hover:bg-indigo-50 text-slate-700 border-slate-200 shadow-2xs'
                   }`}
-                  title="Voice Command (Speak in Bangla or English)"
+                  title="Voice Command"
                 >
                   🎙️
                 </button>
@@ -2123,7 +2123,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                   type="text"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
-                  placeholder="এখানে লিখুন (যেমন: আজকের রিপোর্ট, 2026-10-15 এর রিপোর্ট, ৩ দিন লেট লিস্ট, স্যালারি শিট, বা কর্মচারীর নাম)..."
+                  placeholder="Ask anything (e.g. today attendance, 3-day late list, salary sheet, or employee name)..."
                   className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                 />
               </div>
@@ -2183,7 +2183,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                               title={speakingMsgId === msg.id ? 'Stop voice reading' : 'Read summary aloud'}
                             >
                               <span>{speakingMsgId === msg.id ? '🔇' : '🔊'}</span>
-                              <span>{speakingMsgId === msg.id ? 'ভয়েস অফ করুন (Stop)' : 'শুনুন'}</span>
+                              <span>{speakingMsgId === msg.id ? 'Stop Voice' : 'Listen'}</span>
                             </button>
                             <button
                               type="button"
@@ -2210,7 +2210,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                             <div className="flex items-center space-x-2">
                               <span className="text-xs font-bold text-indigo-950 flex items-center space-x-1">
                                 <span>📅</span>
-                                <span>অন্যান্য তারিখের রিপোর্ট দেখুন (Select Date):</span>
+                                <span>Select Date for Report:</span>
                               </span>
                               <input
                                 type="date"
@@ -2228,7 +2228,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                                 className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-800 cursor-pointer shadow-2xs transition-all"
                                 title="Previous Day"
                               >
-                                ◄ আগের দিন
+                                ◄ Previous Day
                               </button>
                               <button
                                 type="button"
@@ -2239,7 +2239,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                                     : 'bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-800'
                                 }`}
                               >
-                                আজকে (Today)
+                                Today
                               </button>
                               <button
                                 type="button"
@@ -2247,7 +2247,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                                 className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-800 cursor-pointer shadow-2xs transition-all"
                                 title="Next Day"
                               >
-                                পরের দিন ►
+                                Next Day ►
                               </button>
                             </div>
                           </div>
@@ -2286,7 +2286,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                         {msg.report.actionType === 'send_late_warnings' && (
                           <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <span className="text-xs font-bold text-rose-900">
-                              🚨 ১-ক্লিকে ৩+ দিন লেট করা সকল কর্মচারীর Employee Panel-এ অফিশিয়াল ওয়ার্নিং মেসেজ পাঠাতে চান?
+                              🚨 Send official warning notice to all employees with 3+ late arrivals?
                             </span>
                             <button
                               type="button"
@@ -2301,7 +2301,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                         {msg.report.actionType === 'send_punctual_appreciation' && (
                           <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <span className="text-xs font-bold text-emerald-900">
-                              🏆 ১-ক্লিকে ০ লেট থাকা সেরা কর্মচারীদের প্যানেলে অভিনন্দন মেসেজ পাঠাতে চান?
+                              🏆 Send official appreciation note to all employees with 100% punctuality?
                             </span>
                             <button
                               type="button"
@@ -2527,7 +2527,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
 
             <div className="p-3.5 bg-indigo-50/70 border-l-4 border-indigo-600 rounded-r-xl">
               <p className="font-black text-indigo-950 text-xs sm:text-sm">
-                বিষয় / SUBJECT: {generatedOfficialLetter.subject}
+                SUBJECT: {generatedOfficialLetter.subject}
               </p>
             </div>
 
@@ -2574,12 +2574,12 @@ export function AIReportAssistant({ onNavigate }: Props) {
               Employees with 3 or More Late Arrivals ({formatMonthLabel(selectedMonth)})
             </h3>
             <p className="text-xs text-slate-600">
-              এই কর্মচারীদের Employee Panel Dashboard-এ ইতিমধ্যে অফিশিয়াল ওয়ার্নিং লেটার হাইলাইট হয়েছে। আপনি ১ ক্লিকে তাদের সবাইকে এইচআর চ্যাট ও নোটিফিকেশনে সতর্কবার্তা পাঠাতে পারেন।
+              Official warning notices can be dispatched to these employees in one click.
             </p>
             <div className="max-h-48 overflow-y-auto space-y-1.5 thin-scroll">
               {employeeAnalytics.filter(a => a.totalLate >= 3).length === 0 ? (
                 <p className="text-xs text-emerald-700 font-semibold py-4">
-                  ✅ আলহামদুলিল্লাহ! এই মাসে কোনো কর্মচারীর ৩ দিন বা তার বেশি লেট হয়নি।
+                  ✅ Excellent! No employees have 3 or more late arrivals this month.
                 </p>
               ) : (
                 employeeAnalytics
@@ -2632,7 +2632,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
               Zero Unexcused Late Arrivals ({formatMonthLabel(selectedMonth)})
             </h3>
             <p className="text-xs text-slate-600">
-              যারা এই মাসে একদিনও আন-এক্সকিউজড লেট করেননি, তাদের উৎসাহিত করতে ১ ক্লিকে অফিশিয়াল প্রশংসাপত্র মেসেজ পাঠান।
+              Employees with zero unexcused late arrivals this month. Send an official appreciation note in one click.
             </p>
             <div className="max-h-48 overflow-y-auto space-y-1.5 thin-scroll">
               {employeeAnalytics
@@ -2683,7 +2683,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
               Pending Leave Applications &amp; Uploaded Word/PDF Files
             </h3>
             <p className="text-xs text-slate-600">
-              মোট {leaveRequests.filter(l => Boolean(l.attachmentDataUrl)).length}টি ছুটির আবেদনে Word/PDF দরখাস্ত সংযুক্ত করা হয়েছে।
+              Total {leaveRequests.filter(l => Boolean(l.attachmentDataUrl)).length} leave requests submitted with supporting Word/PDF documents.
             </p>
             {onNavigate && (
               <button
@@ -2710,7 +2710,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
               Pending Late Arrival Waiver &amp; Early Checkout Requests
             </h3>
             <p className="text-xs text-slate-600">
-              কর্মচারীদের জমা দেওয়া লেট ওয়েভার আবেদন যাচাই করে অনুমোদন করলে ৩ দিন লেটের বেতন কর্তন মওকুফ হবে।
+              Review and approve employee late arrival waiver applications to waive salary penalty cuts.
             </p>
             {onNavigate && (
               <button
@@ -2949,7 +2949,7 @@ export function AIReportAssistant({ onNavigate }: Props) {
                   <span className="font-bold text-slate-900 text-sm">{generatedOfficialLetter.recipient}</span>
                 </div>
                 <div className="p-3.5 bg-indigo-50/70 border-l-4 border-indigo-600 rounded-r-xl font-black text-indigo-950 text-xs sm:text-sm">
-                  বিষয় / SUBJECT: {generatedOfficialLetter.subject}
+                  SUBJECT: {generatedOfficialLetter.subject}
                 </div>
                 <div className="p-4 bg-white rounded-xl border border-slate-200 whitespace-pre-line text-xs sm:text-sm text-slate-800 leading-relaxed">
                   {generatedOfficialLetter.bodyBangla}

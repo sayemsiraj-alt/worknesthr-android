@@ -118,7 +118,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
       let msg = 'Failed to get GPS location. Please allow location access in your device settings.';
       if (err.code === 1) {
         msg = isInsideIframe
-          ? 'ব্রাউজারে লোকেশন পারমিশন ব্লক রয়েছে (Google Chrome Iframe)। নিচে "Proceed with Office QR" বাটনে ক্লিক করে সরাসরি হাজিরা দিন অথবা সরাসরি ফুল ব্রাউজারে খুলুন।'
+          ? 'Browser location permission is blocked inside iframe preview. Click "Proceed with Office QR" below to check in, or open in a full browser tab.'
           : 'Location permission was denied in Google Chrome. Please allow location access in Chrome Site Settings, or proceed with Office QR punch below.';
       } else if (err.code === 2) {
         msg = 'GPS signal unavailable. Please ensure your device location/GPS is turned on.';
@@ -282,6 +282,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
           maxOvertimeHours: sched.maxOvertimeHours || 0,
           latePolicyEnabled: sched.latePolicyEnabled !== false,
           isFlexible: sched.shift?.type === 'flexible',
+          skipMonthFilter: true,
         });
 
         const distanceM =
@@ -414,8 +415,8 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
             status: 'fraud_blocked',
             message: 'GPS Permission Restricted (Chrome / Iframe)',
             details: isInsideIframe
-              ? 'মোবাইলে GPS অন থাকলেও Chrome আইফ্রেম বা ব্রাউজার পারমিশনের কারণে লোকেশন লক করা যায়নি। নিচের বোতামে চাপ দিয়ে সরাসরি অফিস কিউআর দিয়ে হাজিরা দিন।'
-              : 'GPS was not accessible in your browser. Tap "হাজিরা নিশ্চিত করুন (Confirm Attendance)" below to record attendance immediately via office poster verification.',
+              ? 'GPS was restricted by the browser iframe permissions. Tap the button below to complete attendance check-in directly via the verified Office QR poster.'
+              : 'GPS was not accessible in your browser. Tap "Confirm Attendance" below to record attendance immediately via office poster verification.',
             branchName: scannedBranch.name,
           });
           return;
@@ -596,7 +597,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
                   className="flex-1 sm:flex-initial px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-md flex items-center justify-center space-x-1.5 cursor-pointer active:scale-95 transition-all"
                 >
                   <span>⚡</span>
-                  <span>Proceed with Office QR (হাজিরা দিন)</span>
+                  <span>Proceed with Office QR</span>
                 </button>
 
                 <button
@@ -623,15 +624,15 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
                 <div className="p-3 bg-slate-900/95 border border-slate-700 rounded-xl text-[11px] text-slate-300 space-y-1.5 animate-fade-in">
                   <p className="font-bold text-white flex items-center space-x-1.5">
                     <span>📱</span>
-                    <span>Android Chrome-এ লোকেশন অন করার নিয়ম:</span>
+                    <span>How to enable location in Chrome on Android:</span>
                   </p>
                   <ol className="list-decimal list-inside space-y-1 text-slate-300">
-                    <li>Chrome ব্রাউজারের উপরে URL বারের বামে <strong>🔒 লক</strong> বা <strong>⚙️ টিউন</strong> আইকনে চাপুন।</li>
-                    <li><strong>Permissions</strong>-এ ট্যাপ করে <strong>Location</strong>-এ যান।</li>
-                    <li>সেখানে <strong>&ldquo;Allow&rdquo;</strong> সিলেক্ট করুন। এরপর &ldquo;Retry GPS&rdquo; চাপুন।</li>
+                    <li>Tap the <strong>🔒 lock</strong> or <strong>⚙️ tune</strong> icon on the left side of the address bar.</li>
+                    <li>Tap <strong>Permissions</strong> and go to <strong>Location</strong>.</li>
+                    <li>Select <strong>&ldquo;Allow&rdquo;</strong>, then return and tap &ldquo;Retry GPS&rdquo;.</li>
                   </ol>
                   <p className="text-[10px] text-emerald-400 font-semibold pt-1">
-                    💡 অথবা কোনো ঝামেলা ছাড়াই সরাসরি উপরে <strong>&ldquo;Proceed with Office QR&rdquo;</strong> চাপলেই কিউআর স্ক্যান করে হাজিরা সম্পন্ন করতে পারবেন।
+                    💡 Or you can directly tap <strong>&ldquo;Proceed with Office QR&rdquo;</strong> above to scan the office poster without GPS issues.
                   </p>
                 </div>
               )}
@@ -780,7 +781,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
                           className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg flex items-center justify-center space-x-2 cursor-pointer active:scale-95 transition-all"
                         >
                           <span>⚡</span>
-                          <span>হাজিরা নিশ্চিত করুন (Confirm Attendance)</span>
+                          <span>Confirm Attendance</span>
                         </button>
 
                         <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -789,7 +790,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
                             onClick={() => setShowChromeHelp(true)}
                             className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium cursor-pointer transition-colors"
                           >
-                            📖 Chrome গাইড
+                            📖 Chrome Help
                           </button>
                           {isInsideIframe ? (
                             <button
@@ -797,7 +798,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
                               onClick={() => window.open(window.location.href, '_blank')}
                               className="py-1.5 px-2.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium cursor-pointer transition-colors truncate"
                             >
-                              🌐 ফুল ব্রাউজার
+                              🌐 Full Browser
                             </button>
                           ) : (
                             <button
@@ -808,7 +809,7 @@ export function OfficeQRGpsCheckIn({ onSuccess, onClose }: OfficeQRGpsCheckInPro
                               }}
                               className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
                             >
-                              ↺ আবার স্ক্যান
+                              ↺ Scan Again
                             </button>
                           )}
                         </div>

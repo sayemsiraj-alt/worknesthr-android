@@ -144,6 +144,11 @@ export function Dashboard({ onNavigate }: Props) {
         let count = 0;
         snap.forEach(d => {
           const data = d.data();
+          const isOplog = d.id.includes('OPLOG') ||
+            String(data.employeeId || '').toUpperCase().includes('OPLOG') ||
+            String(data.employeeName || '').toUpperCase().includes('OPLOG');
+          if (isOplog) return;
+
           const docComp = data.companyId || 'default';
           const matchComp = activeTenant !== 'default' ? docComp === activeTenant : (docComp === 'default');
           if (matchComp && (data.date === todayStr || data.punchTimestamp?.startsWith(todayStr))) {
@@ -337,10 +342,10 @@ export function Dashboard({ onNavigate }: Props) {
     });
 
     return [
-      { id: 'present', label: 'Present Today', bangla: 'উপস্থিত', count: realPresentCount, color: '#10B981', bg: 'bg-emerald-500', text: 'text-emerald-700', lightBg: 'bg-emerald-50', page: 'attendance' as Page },
-      { id: 'absent', label: 'Absent / Pending', bangla: 'অনুপস্থিত', count: absentOrPendingCount, color: '#F43F5E', bg: 'bg-rose-500', text: 'text-rose-700', lightBg: 'bg-rose-50', page: 'attendance' as Page },
-      { id: 'offday', label: 'Weekly Off', bangla: 'সাপ্তাহিক ছুটি', count: weeklyOffCount, color: '#8B5CF6', bg: 'bg-violet-500', text: 'text-violet-700', lightBg: 'bg-violet-50', page: 'roster' as Page },
-      { id: 'leave', label: 'On Leave', bangla: 'ছুটিতে', count: leaveCount, color: '#F59E0B', bg: 'bg-amber-500', text: 'text-amber-700', lightBg: 'bg-amber-50', page: 'leave' as Page },
+      { id: 'present', label: 'Present Today', bangla: 'Present', count: realPresentCount, color: '#10B981', bg: 'bg-emerald-500', text: 'text-emerald-700', lightBg: 'bg-emerald-50', page: 'attendance' as Page },
+      { id: 'absent', label: 'Absent / Pending', bangla: 'Absent', count: absentOrPendingCount, color: '#F43F5E', bg: 'bg-rose-500', text: 'text-rose-700', lightBg: 'bg-rose-50', page: 'attendance' as Page },
+      { id: 'offday', label: 'Weekly Off', bangla: 'Weekly Off', count: weeklyOffCount, color: '#8B5CF6', bg: 'bg-violet-500', text: 'text-violet-700', lightBg: 'bg-violet-50', page: 'roster' as Page },
+      { id: 'leave', label: 'On Leave', bangla: 'On Leave', count: leaveCount, color: '#F59E0B', bg: 'bg-amber-500', text: 'text-amber-700', lightBg: 'bg-amber-50', page: 'leave' as Page },
     ];
   }, [employees, verifiedPresentEmployees, realPresentCount, leaveRequests, todayStr, roster, shifts]);
 
@@ -736,10 +741,10 @@ export function Dashboard({ onNavigate }: Props) {
                     <span>⚡ Real-Time HR &amp; Payroll</span>
                   </span>
                   <h1 className="text-lg sm:text-xl font-black mt-1.5 tracking-tight">
-                    স্বাগতম, Admin! 👋
+                    Welcome, Admin! 👋
                   </h1>
                   <p className="text-[11px] sm:text-xs text-indigo-100/90 mt-0.5 leading-relaxed">
-                    আপনার পুরো HR Team এবং ZKTeco Biometric Machine এখন Google Firestore-এর সাথে সিঙ্কড।
+                    Your entire HR team and biometric machines are synchronized in real-time.
                   </p>
                 </div>
 
@@ -798,7 +803,7 @@ export function Dashboard({ onNavigate }: Props) {
                       : `📍 Active Workspace: ${activeBranch}`}
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                    ঢাকার মেইন হেড অফিস এবং সকল ব্রাঞ্চ অফিসের হাজিরা ও এইচআর একসাথে নিয়ন্ত্রণ করুন।
+                    Manage Head Office and all branch office attendance and HR seamlessly in one platform.
                   </p>
                 </div>
 

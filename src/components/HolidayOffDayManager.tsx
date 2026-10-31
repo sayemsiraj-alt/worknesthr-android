@@ -25,7 +25,7 @@ type HolidayPreset = {
 
 const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
   {
-    title: 'Eid-ul-Fitr (ঈদুল ফিতর)',
+    title: 'Eid-ul-Fitr',
     type: 'religious',
     defaultDurationDays: 3,
     monthDayStart: { month: 2, day: 31 }, // Late March / Early April
@@ -33,7 +33,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🌙',
   },
   {
-    title: 'Eid-ul-Adha (ঈদুল আযহা)',
+    title: 'Eid-ul-Adha',
     type: 'religious',
     defaultDurationDays: 3,
     monthDayStart: { month: 5, day: 6 }, // June
@@ -41,7 +41,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🕋',
   },
   {
-    title: 'Durga Puja / Bijoya Dashami (শারদীয় দুর্গাপূজা)',
+    title: 'Durga Puja / Bijoya Dashami',
     type: 'religious',
     defaultDurationDays: 2,
     monthDayStart: { month: 9, day: 20 }, // October
@@ -49,7 +49,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🪔',
   },
   {
-    title: 'Independence Day (২৬শে মার্চ - স্বাধীনতা দিবস)',
+    title: 'Independence Day (26 March)',
     type: 'government',
     defaultDurationDays: 1,
     monthDayStart: { month: 2, day: 26 }, // March 26
@@ -57,7 +57,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🇧🇩',
   },
   {
-    title: 'Victory Day (১৬ই ডিসেম্বর - বিজয় দিবস)',
+    title: 'Victory Day (16 December)',
     type: 'government',
     defaultDurationDays: 1,
     monthDayStart: { month: 11, day: 16 }, // Dec 16
@@ -65,7 +65,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🇧🇩',
   },
   {
-    title: 'Shaheed Day & Int\'l Mother Language Day (২১শে ফেব্রুয়ারি)',
+    title: 'Shaheed Day & Int\'l Mother Language Day (21 February)',
     type: 'government',
     defaultDurationDays: 1,
     monthDayStart: { month: 1, day: 21 }, // Feb 21
@@ -73,7 +73,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🇧🇩',
   },
   {
-    title: 'May Day / Labor Day (১লা মে - শ্রমিক দিবস)',
+    title: 'May Day / Labor Day (1 May)',
     type: 'government',
     defaultDurationDays: 1,
     monthDayStart: { month: 4, day: 1 }, // May 1
@@ -81,7 +81,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🛠️',
   },
   {
-    title: 'Pohela Boishakh (পহেলা বৈশাখ - বাংলা নববর্ষ)',
+    title: 'Bengali New Year (Pohela Boishakh - 14 April)',
     type: 'festival',
     defaultDurationDays: 1,
     monthDayStart: { month: 3, day: 14 }, // April 14
@@ -89,7 +89,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🌾',
   },
   {
-    title: 'Christmas Day (২৫শে ডিসেম্বর - বড়দিন)',
+    title: 'Christmas Day (25 December)',
     type: 'religious',
     defaultDurationDays: 1,
     monthDayStart: { month: 11, day: 25 }, // Dec 25
@@ -97,7 +97,7 @@ const BANGLADESH_HOLIDAY_PRESETS: HolidayPreset[] = [
     icon: '🎄',
   },
   {
-    title: 'Executive Special Office Closure (বিশেষ নির্বাহী ছুটি)',
+    title: 'Executive Special Office Closure',
     type: 'special_off',
     defaultDurationDays: 1,
     monthDayStart: { month: new Date().getMonth(), day: new Date().getDate() },
@@ -578,7 +578,7 @@ export function HolidayOffDayManager({ onClose, isModal = false }: Props) {
                   Special Off-Days &amp; Holiday Roster Center
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
-                  ছুটি ও বিশেষ বন্ধ
+                  Special Holidays
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -970,7 +970,7 @@ export function HolidayOffDayManager({ onClose, isModal = false }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    Holiday Title * (ছুটির নাম)
+                    Holiday Title *
                   </label>
                   <input
                     type="text"
@@ -1004,7 +1004,7 @@ export function HolidayOffDayManager({ onClose, isModal = false }: Props) {
               <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
-                    Holiday Dates &amp; Duration (তারিখ ও সময়সীমা)
+                    Holiday Dates &amp; Duration
                   </label>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">
                     Total: {calculatedDays} Day{calculatedDays > 1 ? 's' : ''}
@@ -1050,7 +1050,7 @@ export function HolidayOffDayManager({ onClose, isModal = false }: Props) {
               {/* Scope Selection */}
               <div>
                 <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Holiday Coverage Scope (ছুটি কার কার জন্য প্রযোজ্য?)
+                  Holiday Coverage Scope
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
@@ -1196,7 +1196,7 @@ export function HolidayOffDayManager({ onClose, isModal = false }: Props) {
                     <span className="text-base">⚡</span>
                     <div>
                       <h4 className="text-xs font-black text-rose-950 uppercase tracking-wider">
-                        On-Duty Exceptions (জরুরি ডিউটি কর্মী - যারা এই ছুটির দিনেও কাজ করবেন)
+                        On-Duty Exceptions (Staff working during holiday)
                       </h4>
                       <p className="text-[10px] text-rose-800">
                         Designate emergency personnel (Security, IT, Maintenance, Operators) who will NOT be off.
@@ -1308,7 +1308,7 @@ export function HolidayOffDayManager({ onClose, isModal = false }: Props) {
               {/* Notes & Description */}
               <div>
                 <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Administrative Remarks / Circular Note (ঐচ্ছিক মন্তব্য)
+                  Administrative Remarks / Circular Note (Optional)
                 </label>
                 <textarea
                   rows={2}

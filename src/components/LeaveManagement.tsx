@@ -440,7 +440,7 @@ export function LeaveManagement() {
                       </div>
                     </div>
                     <p className="text-[11px] text-indigo-900 font-medium">
-                      💡 অ্যাডমিন হিসেবে আপনি কর্মচারীর অবশিষ্ট ছুটির ব্যালেন্স এবং নিচে সংযুক্ত দরখাস্ত (Word/PDF) যাচাই করে ছুটি মঞ্জুর বা বাতিল করতে পারেন।
+                      💡 As an administrator, you can review the employee leave balance and attached documents (Word/PDF) before approving or rejecting.
                     </p>
                   </div>
                 )}
@@ -472,10 +472,10 @@ export function LeaveManagement() {
                     <div className="text-center py-8 text-slate-400 space-y-1">
                       <span className="text-3xl block">📄</span>
                       <p className="font-semibold text-slate-600 text-xs">
-                        এই ছুটির আবেদনের সাথে কোনো Word বা PDF ফাইল সংযুক্ত করা হয়নি।
+                        No supporting Word or PDF application document was attached.
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        No supporting document was uploaded by the employee.
+                        The employee submitted this request without an attachment.
                       </p>
                     </div>
                   ) : selectedLeave.attachmentDataUrl.startsWith('data:application/pdf') ||
@@ -508,7 +508,7 @@ export function LeaveManagement() {
                         )}
                       </div>
                       <p className="text-xs text-slate-600">
-                        কর্মচারী তার ছুটির দরখাস্তটি <strong>Word File</strong> হিসেবে আপলোড করেছেন। ফাইলটি ওপেন ও যাচাই করার জন্য নিচের ডাউনলোড বাটনে ক্লিক করুন:
+                        The employee uploaded a <strong>Word Document</strong> (.doc/.docx). Click below to download and review the file:
                       </p>
                       <a
                         href={selectedLeave.attachmentDataUrl}
@@ -527,7 +527,7 @@ export function LeaveManagement() {
               <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="font-bold text-slate-800 text-xs uppercase tracking-wider">
-                    ✍️ Admin Justification / Review Decision Note (কর্মচারীর প্যানেলে দেখা যাবে)
+                    ✍️ Admin Justification / Review Decision Remarks (Visible on Employee Portal)
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {[

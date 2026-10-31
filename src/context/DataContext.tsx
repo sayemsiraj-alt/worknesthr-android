@@ -1202,6 +1202,7 @@ export type BiometricDevice = {
   syncedAt?: string | null;
   lastTested?: string | null;
   testLatency?: number | null;
+  companyId?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -1235,6 +1236,7 @@ export function normalizeBiometricDevice(data: any): BiometricDevice {
     branch: data.branch || data.branchName || '',
     branchId: data.branchId || '',
     notes: data.notes || '',
+    companyId: data.companyId || 'default',
     lastSeen: data.lastSeen || data.connectedAt || null,
     lastSync: data.lastSync || data.syncedAt || null,
     connectedAt: data.connectedAt || null,

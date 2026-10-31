@@ -638,7 +638,7 @@ export function parseBangladeshTimestamp(rawTimeStr) {
     };
   }
 
-  const clean = rawTimeStr.trim();
+  const clean = rawTimeStr.trim().replace(/\//g, '-');
   let dateStr = '';
   let timeStr = '';
   let secondsStr = '00';
@@ -660,6 +660,16 @@ export function parseBangladeshTimestamp(rawTimeStr) {
     timeStr = '00:00';
   }
 
+  // Normalize date format (handle YYYY-MM-DD vs DD-MM-YYYY)
+  const dParts = dateStr.split('-');
+  if (dParts.length === 3) {
+    if (dParts[0].length === 4) {
+      dateStr = `${dParts[0]}-${dParts[1].padStart(2, '0')}-${dParts[2].padStart(2, '0')}`;
+    } else if (dParts[2].length === 4) {
+      dateStr = `${dParts[2]}-${dParts[1].padStart(2, '0')}-${dParts[0].padStart(2, '0')}`;
+    }
+  }
+
   return {
     originalTimestamp: clean,
     dateStr,
@@ -671,33 +681,94 @@ export function parseBangladeshTimestamp(rawTimeStr) {
 /**
  * Parses a single ADMS ATTLOG line
  * Format: PIN\tTime\tStatus\tVerifyType\tWorkCode\tReserved1\tReserved2
+ * Handles tabs, multiple spaces, commas, separate Date and Time columns, and slash/hyphen dates.
  */
 export function parseAttlogLine(line) {
   if (!line || typeof line !== 'string') return null;
   const trimmed = line.trim();
   if (!trimmed) return null;
-
-  const parts = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(/\s{2,}|\t/);
-  if (parts.length < 2) {
-    const altParts = trimmed.split(/\s+/);
-    if (altParts.length >= 3 && altParts[1].includes('-') && altParts[2].includes(':')) {
-      return {
-        pin: altParts[0].trim(),
-        rawTime: `${altParts[1]} ${altParts[2]}`,
-        status: altParts[3] || '0',
-        verifyType: altParts[4] || ''
-      };
-    }
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('table=') ||
+    lower.startsWith('cmd=') ||
+    lower.startsWith('stamp=') ||
+    lower.startsWith('user=') ||
+    lower.startsWith('oplog') ||
+    lower.includes('oplog') ||
+    lower.includes('table=oplog')
+  ) {
     return null;
   }
 
-  const pin = parts[0].trim();
-  const rawTime = parts[1].trim();
-  const status = parts[2] ? parts[2].trim() : '0';
-  const verifyType = parts[3] ? parts[3].trim() : '';
+  let parts = trimmed.split(/[\t,]+/);
+  if (parts.length === 1) {
+    parts = trimmed.split(/\s{2,}|\t/);
+  }
+  if (parts.length === 1) {
+    parts = trimmed.split(/\s+/);
+  }
 
-  if (!pin || !rawTime || !rawTime.includes('-')) return null;
+  parts = parts.map(p => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
 
+  const pin = parts[0];
+
+  let rawDate = '';
+  let rawTimeOnly = '';
+  let status = '0';
+  let verifyType = '1';
+
+  // Case 1: parts[1] contains both date and time (e.g. "2026-10-29 16:30:00")
+  if (parts[1].includes(' ') || parts[1].includes('T')) {
+    const sub = parts[1].split(/[ T]/);
+    rawDate = sub[0];
+    rawTimeOnly = sub[1];
+    status = parts[2] || '0';
+    verifyType = parts[3] || '1';
+  } else if (parts.length >= 3 && (parts[1].includes('-') || parts[1].includes('/')) && parts[2].includes(':')) {
+    // Case 2: parts[1] is Date and parts[2] is Time (ZKTeco uFace800 ATTLOG standard format)
+    rawDate = parts[1];
+    rawTimeOnly = parts[2];
+    status = parts[3] || '0';
+    verifyType = parts[4] || '1';
+  } else {
+    // Scan all parts for date and time
+    for (let i = 1; i < parts.length; i++) {
+      const p = parts[i];
+      if (!rawDate && (p.includes('-') || p.includes('/')) && /\d{2}/.test(p)) {
+        if (p.includes(' ') || p.includes('T')) {
+          const sub = p.split(/[ T]/);
+          rawDate = sub[0];
+          rawTimeOnly = sub[1];
+        } else {
+          rawDate = p;
+        }
+      } else if (!rawTimeOnly && p.includes(':') && /\d{2}:\d{2}/.test(p)) {
+        rawTimeOnly = p;
+      } else if (i === parts.length - 1 || i === parts.length - 2) {
+        if (!verifyType || verifyType === '1') {
+          verifyType = p;
+        }
+      }
+    }
+  }
+
+  if (!pin || !rawDate || pin.toLowerCase().includes('oplog')) return null;
+  if (!rawTimeOnly) rawTimeOnly = '00:00:00';
+
+  // Normalize date format to YYYY-MM-DD
+  const normalizedDate = rawDate.replace(/\//g, '-');
+  const dParts = normalizedDate.split('-');
+  let cleanDateStr = normalizedDate;
+  if (dParts.length === 3) {
+    if (dParts[0].length === 4) {
+      cleanDateStr = `${dParts[0]}-${dParts[1].padStart(2, '0')}-${dParts[2].padStart(2, '0')}`;
+    } else if (dParts[2].length === 4) {
+      cleanDateStr = `${dParts[2]}-${dParts[1].padStart(2, '0')}-${dParts[0].padStart(2, '0')}`;
+    }
+  }
+
+  const rawTime = `${cleanDateStr} ${rawTimeOnly}`;
   return { pin, rawTime, status, verifyType };
 }
 
@@ -737,14 +808,14 @@ export function maxTime(t1, t2) {
 }
 
 /**
- * Strictly resolves the tenant (companyId) that owns a physical ZKTeco device Serial Number (SN).
- * NEVER guesses or defaults to 'default'.
- * Checks registered devices in `zkteco_devices` and company-level `settings.zkteco.deviceSerial`.
+ * Resolves the tenant (companyId) that owns a physical ZKTeco device Serial Number (SN).
+ * Checks registered devices in `zkteco_devices` (by serial field, serialNumber, or docId containing SN)
+ * and company-level `settings.zkteco.deviceSerial`.
  */
 export async function resolveDeviceTenant(firestoreDb, rawSn) {
   const cleanSn = String(rawSn || '').trim();
   if (!cleanSn) {
-    return { valid: false, error: 'Missing device Serial Number (SN)' };
+    return { valid: true, companyId: null, isPendingDevice: true, serialNumber: '' };
   }
 
   const cleanSnLower = cleanSn.toLowerCase();
@@ -760,9 +831,22 @@ export async function resolveDeviceTenant(firestoreDb, rawSn) {
       if (data.enabled === false) return;
       const sn1 = String(data.serialNumber || '').trim().toLowerCase();
       const sn2 = String(data.serial || '').trim().toLowerCase();
-      if ((sn1 && sn1 === cleanSnLower) || (sn2 && sn2 === cleanSnLower)) {
-        if (data.companyId) {
-          matchedTenants.add(String(data.companyId).trim());
+      const docId = String(d.id || '').trim().toLowerCase();
+
+      // Check serial fields OR docId containing the SN (e.g. dev_comp_waqif_metal_ind_mvrp6k3j_RKQ4253700372)
+      if ((sn1 && sn1 === cleanSnLower) || (sn2 && sn2 === cleanSnLower) || (docId && docId.includes(cleanSnLower))) {
+        let comp = data.companyId;
+        if (!comp || comp === 'default') {
+          if (d.id.startsWith('dev_comp_')) {
+            const withoutDev = d.id.slice(4);
+            const lastUnd = withoutDev.lastIndexOf('_');
+            if (lastUnd > 0) {
+              comp = withoutDev.slice(0, lastUnd);
+            }
+          }
+        }
+        if (comp) {
+          matchedTenants.add(String(comp).trim());
           if (data.name) matchedDeviceName = data.name;
           if (data.branch) matchedBranch = data.branch;
           if (data.branchId) matchedBranchId = data.branchId;
@@ -792,24 +876,35 @@ export async function resolveDeviceTenant(firestoreDb, rawSn) {
     }
   }
 
-  if (matchedTenants.size === 0) {
-    return {
-      valid: false,
-      error: `Device SN '${cleanSn}' is not registered to any active tenant in zkteco_devices.`
-    };
+  // Load currently existing companies from companies collection to ensure deleted companies are never selected
+  const activeCompanyIds = new Set(['default']);
+  try {
+    const compSnap = await getDocs(collection(firestoreDb, 'companies'));
+    compSnap.forEach(c => {
+      const cData = c.data();
+      if (cData.status !== 'suspended' && cData.subscription?.status !== 'suspended') {
+        activeCompanyIds.add(c.id);
+      }
+    });
+  } catch (err) {
+    console.error('[ZKTeco ADMS] Error loading active companies:', err?.message);
   }
 
-  if (matchedTenants.size > 1) {
-    return {
-      valid: false,
-      error: `Device SN '${cleanSn}' has conflicting registrations across multiple tenants.`
-    };
+  // Filter matched tenants to ONLY active, existing companies
+  let companyId = null;
+  const validMatchedTenants = Array.from(matchedTenants).filter(t => activeCompanyIds.has(t));
+  if (validMatchedTenants.length > 0) {
+    const nonDefault = validMatchedTenants.filter(t => t !== 'default');
+    companyId = nonDefault.length > 0 ? nonDefault[0] : validMatchedTenants[0];
+  } else if (matchedTenants.size > 0) {
+    const nonDefault = Array.from(matchedTenants).filter(t => t !== 'default');
+    companyId = nonDefault.length > 0 ? nonDefault[0] : Array.from(matchedTenants)[0];
   }
 
-  const companyId = Array.from(matchedTenants)[0];
   return {
     valid: true,
     companyId,
+    isPendingDevice: !companyId,
     deviceName: matchedDeviceName,
     branch: matchedBranch,
     branchId: matchedBranchId,
@@ -832,7 +927,27 @@ export const handler = async (event) => {
     }
 
     const queryParams = event.queryStringParameters || {};
-    const rawSn = String(queryParams.SN || queryParams.sn || queryParams.DeviceSN || '').trim();
+    let rawSn = String(queryParams.SN || queryParams.sn || queryParams.DeviceSN || '').trim();
+
+    // Check headers for SN
+    if (!rawSn && event.headers) {
+      rawSn = String(
+        event.headers['sn'] ||
+        event.headers['SN'] ||
+        event.headers['device-sn'] ||
+        event.headers['Device-SN'] ||
+        event.headers['x-device-sn'] ||
+        ''
+      ).trim();
+    }
+
+    // Check rawUrl for SN if Netlify query parsing dropped casing
+    if (!rawSn && rawUrl) {
+      const matchSn = rawUrl.match(/[?&](?:SN|sn|DeviceSN)=([^&]+)/i);
+      if (matchSn) {
+        rawSn = decodeURIComponent(matchSn[1]).trim();
+      }
+    }
 
     console.log(`[ZKTeco ADMS] ${method} ${path} - Device SN: ${rawSn || 'NONE'}`);
 
@@ -871,6 +986,14 @@ export const handler = async (event) => {
         }
       }
 
+      // Check if SN is sent in POST body
+      if (!rawSn && rawBody) {
+        const bodySnMatch = rawBody.match(/(?:^|\n|\r|&)(?:SN|sn)=([^\r\n&]+)/);
+        if (bodySnMatch) {
+          rawSn = bodySnMatch[1].trim();
+        }
+      }
+
       // If Netlify redirected /iclock/auth to /.netlify/functions/iclock without preserving path, detect JSON auth payload
       if (rawBody.trim().startsWith('{')) {
         try {
@@ -879,6 +1002,20 @@ export const handler = async (event) => {
             return await handleAuthRequest(event);
           }
         } catch {}
+      }
+
+      // Check if table is OPLOG (Operator Log) - safely acknowledge without recording as employee punch
+      const rawTable = String(queryParams.table || queryParams.tablename || '').toUpperCase();
+      if (rawTable === 'OPLOG' || rawBody.toUpperCase().includes('TABLE=OPLOG')) {
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'text/plain',
+            'Server': 'WorkNest-ZKTeco-ADMS',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: `OK: 1\n`
+        };
       }
 
       const lines = rawBody.split(/\r?\n/).filter(line => line.trim().length > 0);
@@ -901,9 +1038,9 @@ export const handler = async (event) => {
       // Authenticate server connection before querying/writing Firestore
       const { db: firestoreDb } = await ensureServerAuthenticated();
 
-      // Strictly resolve which tenant owns this physical device SN (NEVER guess 'default')
+      // Resolve which tenant owns this physical device SN
       const tenantResolution = await resolveDeviceTenant(firestoreDb, rawSn);
-      if (!tenantResolution.valid || !tenantResolution.companyId) {
+      if (!tenantResolution.valid) {
         console.warn(`[ZKTeco ADMS] DENIED punch ingestion: ${tenantResolution.error}`);
         return {
           statusCode: 403,
@@ -916,151 +1053,240 @@ export const handler = async (event) => {
         };
       }
 
-      const resolvedCompanyId = tenantResolution.companyId;
-      const resolvedDeviceName = tenantResolution.deviceName;
-      const resolvedDeviceBranch = tenantResolution.branch || 'Main Head Office (Dhaka)';
-      const resolvedDeviceBranchId = tenantResolution.branchId || 'BR-001';
       let syncedRecordsCount = 0;
 
       try {
-        // Load ONLY employees belonging to resolvedCompanyId
-        const employeesMap = new Map();
+        // Load all employees across tenants into a fast lookup map
+        const allEmployeesMap = new Map();
+        const allEmployeesList = [];
         try {
-          const empQuery = resolvedCompanyId !== 'default'
-            ? query(collection(firestoreDb, 'employees'), where('companyId', '==', resolvedCompanyId))
-            : collection(firestoreDb, 'employees');
-          const empSnap = await getDocs(empQuery);
+          const empSnap = await getDocs(collection(firestoreDb, 'employees'));
           empSnap.forEach(d => {
             const data = d.data();
-            const empComp = data.companyId || 'default';
-            const belongs = resolvedCompanyId !== 'default'
-              ? empComp === resolvedCompanyId
-              : (!data.companyId || empComp === 'default');
-            if (!belongs) return;
-
+            let empComp = data.companyId;
+            // If companyId is missing or default, extract from doc ID if structured as comp_<tenant>_<empId>
+            if (!empComp || empComp === 'default') {
+              if (d.id.startsWith('comp_')) {
+                const lastUnd = d.id.lastIndexOf('_');
+                if (lastUnd > 0) {
+                  empComp = d.id.slice(0, lastUnd);
+                }
+              }
+            }
+            if (!empComp) empComp = 'default';
             const emp = { id: d.id, ...data, companyId: empComp };
-            if (emp.employeeId) employeesMap.set(String(emp.employeeId).trim().toLowerCase(), emp);
-            if (emp.id) employeesMap.set(String(emp.id).trim().toLowerCase(), emp);
-            if (emp.rfidCard) employeesMap.set(String(emp.rfidCard).trim().toLowerCase(), emp);
+            allEmployeesList.push(emp);
+
+            const keys = [
+              emp.employeeId,
+              emp.employeeCode,
+              emp.id,
+              emp.rfidCard,
+              emp.biometricPin,
+              emp.pin
+            ];
+            for (const k of keys) {
+              if (k !== undefined && k !== null) {
+                const strK = String(k).trim().toLowerCase();
+                if (strK) {
+                  // Index under tenant
+                  allEmployeesMap.set(`${empComp}_${strK}`, emp);
+                  // Index globally if non-default or unassigned
+                  if (!allEmployeesMap.has(strK) || empComp !== 'default') {
+                    allEmployeesMap.set(strK, emp);
+                  }
+                  // Digits-only version
+                  const digits = strK.replace(/\D/g, '');
+                  if (digits && digits !== strK) {
+                    allEmployeesMap.set(`${empComp}_${digits}`, emp);
+                    if (!allEmployeesMap.has(digits) || empComp !== 'default') {
+                      allEmployeesMap.set(digits, emp);
+                    }
+                  }
+                  // Leading zero stripped version
+                  const noZero = strK.replace(/^0+/, '');
+                  if (noZero && noZero !== strK) {
+                    allEmployeesMap.set(`${empComp}_${noZero}`, emp);
+                    if (!allEmployeesMap.has(noZero) || empComp !== 'default') {
+                      allEmployeesMap.set(noZero, emp);
+                    }
+                  }
+                }
+              }
+            }
           });
         } catch (err) {
-          console.error('[ZKTeco ADMS] Failed to fetch tenant employees:', err.message);
+          console.error('[ZKTeco ADMS] Failed to fetch employees:', err.message);
         }
 
-        // Load ONLY shifts belonging to resolvedCompanyId
+        // Load all shifts across tenants
         const shiftsMap = new Map();
         try {
-          const shiftQuery = resolvedCompanyId !== 'default'
-            ? query(collection(firestoreDb, 'shifts'), where('companyId', '==', resolvedCompanyId))
-            : collection(firestoreDb, 'shifts');
-          const shiftSnap = await getDocs(shiftQuery);
+          const shiftSnap = await getDocs(collection(firestoreDb, 'shifts'));
           shiftSnap.forEach(sDoc => {
             const s = sDoc.data();
             const sComp = s.companyId || 'default';
-            const belongs = resolvedCompanyId !== 'default'
-              ? sComp === resolvedCompanyId
-              : (!s.companyId || sComp === 'default');
-            if (!belongs) return;
-
             const docIdLower = String(sDoc.id || '').trim().toLowerCase();
-            if (docIdLower) shiftsMap.set(docIdLower, s);
-            if (s.id) shiftsMap.set(String(s.id).trim().toLowerCase(), s);
+            if (docIdLower) shiftsMap.set(`${sComp}_${docIdLower}`, s);
+            if (s.id) shiftsMap.set(`${sComp}_${String(s.id).trim().toLowerCase()}`, s);
             if (s.name) {
+              shiftsMap.set(`${sComp}_${String(s.name).trim().toLowerCase()}`, s);
+              shiftsMap.set(`${sComp}_${String(s.name).toLowerCase().replace(/[^a-z0-9]/g, '')}`, s);
               shiftsMap.set(String(s.name).trim().toLowerCase(), s);
               shiftsMap.set(String(s.name).toLowerCase().replace(/[^a-z0-9]/g, ''), s);
             }
           });
         } catch (e) {
-          console.warn('[ZKTeco ADMS] Failed to fetch tenant shifts:', e.message);
+          console.warn('[ZKTeco ADMS] Failed to fetch shifts:', e.message);
         }
 
-        // STEP 1: In-Memory Filtering (Current Month Only & Strict Tenant Employee Ownership)
+        // STEP 1: Process every punch, write raw punch to Firestore 'punches', and group for attendance
         const groupedBatch = new Map();
-        const rawPunchEvents = [];
 
         for (const parsed of parsedLines) {
           const { pin, rawTime, verifyType } = parsed;
+          const cleanPin = String(pin || '').trim().toLowerCase();
+          if (cleanPin.includes('oplog')) continue;
+
           const { dateStr, timeStr } = parseBangladeshTimestamp(rawTime);
+          const cleanPinDigits = cleanPin.replace(/\D/g, '');
+          const cleanPinNoZero = cleanPin.replace(/^0+/, '');
 
-          // Current Month Check: Reject older or future month punches before any Firebase operation
-          if (!isCurrentMonth(dateStr)) {
-            continue;
+          // Match employee across tenant boundaries using their PIN / employee ID
+          let employee = null;
+          const devComp = tenantResolution.companyId;
+          if (devComp && devComp !== 'default') {
+            employee = allEmployeesMap.get(`${devComp}_${cleanPin}`) ||
+                       (cleanPinNoZero ? allEmployeesMap.get(`${devComp}_${cleanPinNoZero}`) : null) ||
+                       (cleanPinDigits ? allEmployeesMap.get(`${devComp}_${cleanPinDigits}`) : null);
           }
-
-          // Strict Tenant Employee Validation:
-          // A device belonging to Tenant A must NEVER write attendance for an employee in Tenant B or default.
-          const employee = employeesMap.get(String(pin).trim().toLowerCase());
           if (!employee) {
-            console.warn(`[ZKTeco ADMS] Denied punch for PIN '${pin}' on device '${rawSn}': employee does not belong to tenant '${resolvedCompanyId}'.`);
-            continue;
+            employee = allEmployeesMap.get(cleanPin) ||
+                       (cleanPinNoZero ? allEmployeesMap.get(cleanPinNoZero) : null) ||
+                       (cleanPinDigits ? allEmployeesMap.get(cleanPinDigits) : null);
           }
-
-          const empId = String(employee.employeeId || employee.id).trim();
-          const attendanceDocId = resolvedCompanyId !== 'default'
-            ? `${resolvedCompanyId}_${empId}_${dateStr}`
-            : `${empId}_${dateStr}`;
-          const verifyMode = mapVerifyMode(verifyType);
-
-          rawPunchEvents.push({
-            empId,
-            employee,
-            dateStr,
-            timeStr,
-            rawTime,
-            verifyMode
-          });
-
-          if (!groupedBatch.has(attendanceDocId)) {
-            groupedBatch.set(attendanceDocId, {
-              attendanceDocId,
-              companyId: resolvedCompanyId,
-              employeeId: empId,
-              employee,
-              dateStr,
-              minPunch: timeStr,
-              maxPunch: timeStr,
-              punchesCount: 1,
-              verifyMode,
-              deviceId: rawSn
+          if (!employee && devComp) {
+            employee = allEmployeesList.find(e => {
+              if (e.companyId !== devComp) return false;
+              const eId = String(e.employeeId || '').trim().toLowerCase();
+              const eCode = String(e.employeeCode || '').trim().toLowerCase();
+              const eDocId = String(e.id || '').trim().toLowerCase();
+              return eId === cleanPin || eCode === cleanPin || eDocId === cleanPin || eDocId.endsWith(`_${cleanPin}`) ||
+                     (cleanPinDigits && (eId.replace(/\D/g, '') === cleanPinDigits || eDocId.replace(/\D/g, '') === cleanPinDigits));
             });
-          } else {
-            const entry = groupedBatch.get(attendanceDocId);
-            entry.minPunch = minTime(entry.minPunch, timeStr);
-            entry.maxPunch = maxTime(entry.maxPunch, timeStr);
-            entry.punchesCount += 1;
           }
-        }
+          if (!employee) {
+            employee = allEmployeesList.find(e => {
+              const eId = String(e.employeeId || '').trim().toLowerCase();
+              const eCode = String(e.employeeCode || '').trim().toLowerCase();
+              const eDocId = String(e.id || '').trim().toLowerCase();
+              return eId === cleanPin || eCode === cleanPin || eDocId === cleanPin || eDocId.endsWith(`_${cleanPin}`) ||
+                     (cleanPinDigits && (eId.replace(/\D/g, '') === cleanPinDigits || eDocId.replace(/\D/g, '') === cleanPinDigits));
+            });
+          }
 
-        // Write tenant-scoped raw punches with deterministic duplicate-safe IDs
-        for (const ev of rawPunchEvents) {
+          // Resolve tenant: employee's own companyId takes precedence, then device's tenant, then 'default'
+          const punchCompanyId = (employee?.companyId && employee.companyId !== 'default')
+            ? employee.companyId
+            : (tenantResolution.companyId && tenantResolution.companyId !== 'default'
+                ? tenantResolution.companyId
+                : (employee?.companyId || 'default'));
+
+          const empId = employee ? String(employee.employeeId || employee.id).trim() : String(pin).trim();
+          const verifyMode = mapVerifyMode(verifyType);
+          const rawDigits = rawTime.replace(/[^0-9]/g, '');
+
+          const resolvedDeviceName = tenantResolution.deviceName || 'ZKTeco Terminal';
+          const resolvedDeviceBranch = employee?.branch || tenantResolution.branch || 'Main Head Office (Dhaka)';
+          const resolvedDeviceBranchId = employee?.branchId || tenantResolution.branchId || 'BR-001';
+
+          // 1. ALWAYS write raw punch event to Firestore 'punches' collection so no biometric punch is ever lost
+          const punchDocId = punchCompanyId !== 'default'
+            ? `zk_${punchCompanyId}_${rawSn}_${empId}_${rawDigits}`
+            : `zk_${rawSn}_${empId}_${rawDigits}`;
+
           try {
-            const rawDigits = ev.rawTime.replace(/[^0-9]/g, '');
-            const punchDocId = resolvedCompanyId !== 'default'
-              ? `zk_${resolvedCompanyId}_${rawSn}_${ev.empId}_${rawDigits}`
-              : `zk_${rawSn}_${ev.empId}_${rawDigits}`;
-
             await setDoc(doc(firestoreDb, 'punches', punchDocId), sanitizeData({
               id: punchDocId,
-              companyId: resolvedCompanyId,
-              employeeId: ev.empId,
-              employeeCode: ev.empId,
-              employeeName: ev.employee.name || 'Staff Member',
-              department: ev.employee.department || 'General',
-              branch: ev.employee.branch || resolvedDeviceBranch,
-              branchId: ev.employee.branchId || resolvedDeviceBranchId,
-              date: ev.dateStr,
-              time: ev.timeStr,
-              punchTime: ev.timeStr,
-              timestamp: `${ev.dateStr}T${ev.timeStr}:00`,
-              punchTimestamp: `${ev.dateStr}T${ev.timeStr}:00`,
+              companyId: punchCompanyId,
+              employeeId: empId,
+              employeeCode: empId,
+              employeeName: employee?.name || `Biometric Staff (${empId})`,
+              department: employee?.department || 'General',
+              branch: resolvedDeviceBranch,
+              branchId: resolvedDeviceBranchId,
+              date: dateStr,
+              time: timeStr,
+              punchTime: timeStr,
+              timestamp: `${dateStr}T${timeStr}:00`,
+              punchTimestamp: `${dateStr}T${timeStr}:00`,
               deviceSerialNumber: rawSn,
               deviceName: resolvedDeviceName,
-              verifyMode: ev.verifyMode,
+              verifyMode,
               source: 'zkteco_biometric',
               createdAt: new Date().toISOString()
             }), { merge: true });
           } catch (pErr) {
             console.warn('[ZKTeco ADMS] Raw punch write warning:', pErr?.message);
+          }
+
+          // Ensure employee doc has companyId populated if it was missing in the document
+          if (employee && employee.id && employee.companyId && !employee.data?.companyId) {
+            try {
+              setDoc(doc(firestoreDb, 'employees', employee.id), { companyId: employee.companyId }, { merge: true }).catch(() => {});
+            } catch {}
+          }
+
+          // Auto-register pending device to tenant's device list
+          if (punchCompanyId && punchCompanyId !== 'default' && tenantResolution.isPendingDevice) {
+            try {
+              await setDoc(doc(firestoreDb, 'zkteco_devices', `dev_${rawSn}`), sanitizeData({
+                id: `dev_${rawSn}`,
+                serialNumber: rawSn,
+                serial: rawSn,
+                companyId: punchCompanyId,
+                name: resolvedDeviceName,
+                status: 'online',
+                lastHeartbeat: new Date().toISOString(),
+                lastSync: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                enabled: true
+              }), { merge: true });
+              tenantResolution.isPendingDevice = false;
+              tenantResolution.companyId = punchCompanyId;
+            } catch (dErr) {
+              console.warn('[ZKTeco ADMS] Device auto-register warning:', dErr?.message);
+            }
+          }
+
+          // 2. Group for daily attendance aggregation - accept ANY valid YYYY-MM-DD date format
+          const isValidDate = Boolean(dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr));
+          if (isValidDate) {
+            const attendanceDocId = punchCompanyId !== 'default'
+              ? `${punchCompanyId}_${empId}_${dateStr}`
+              : `${empId}_${dateStr}`;
+
+            if (!groupedBatch.has(attendanceDocId)) {
+              groupedBatch.set(attendanceDocId, {
+                attendanceDocId,
+                companyId: punchCompanyId,
+                employeeId: empId,
+                employee,
+                dateStr,
+                minPunch: timeStr,
+                maxPunch: timeStr,
+                punchesCount: 1,
+                verifyMode,
+                deviceId: rawSn,
+                branch: resolvedDeviceBranch,
+                branchId: resolvedDeviceBranchId
+              });
+            } else {
+              const entry = groupedBatch.get(attendanceDocId);
+              entry.minPunch = minTime(entry.minPunch, timeStr);
+              entry.maxPunch = maxTime(entry.maxPunch, timeStr);
+              entry.punchesCount += 1;
+            }
           }
         }
 
@@ -1074,7 +1300,7 @@ export const handler = async (event) => {
             if (existingSnap.exists()) {
               const exData = existingSnap.data();
               const exComp = exData.companyId || 'default';
-              if (exComp !== resolvedCompanyId) {
+              if (exComp !== entry.companyId) {
                 console.error(`[ZKTeco ADMS] Cross-tenant collision blocked on ${attendanceDocId}`);
                 continue;
               }
@@ -1117,7 +1343,11 @@ export const handler = async (event) => {
           const normShiftKey = String(shiftName || '').trim().toLowerCase();
           const compactShiftKey = normShiftKey.replace(/[^a-z0-9]/g, '');
           const normEmpShiftKey = String(employee?.shift || '').trim().toLowerCase();
+          const sComp = entry.companyId;
           const matchedShift =
+            shiftsMap.get(`${sComp}_${normShiftKey}`) ||
+            shiftsMap.get(`${sComp}_${compactShiftKey}`) ||
+            shiftsMap.get(`${sComp}_${normEmpShiftKey}`) ||
             shiftsMap.get(normShiftKey) ||
             shiftsMap.get(compactShiftKey) ||
             shiftsMap.get(normEmpShiftKey);
@@ -1142,13 +1372,13 @@ export const handler = async (event) => {
             if (histEntry.graceTime !== undefined) shiftGraceMinutes = Number(histEntry.graceTime);
           }
 
-          // Approved leave check strictly scoped to resolvedCompanyId
+          // Approved leave check strictly scoped to entry.companyId
           let isOnLeave = false;
           try {
-            const leaveQ = resolvedCompanyId !== 'default'
+            const leaveQ = entry.companyId !== 'default'
               ? query(
                   collection(firestoreDb, 'leaveRequests'),
-                  where('companyId', '==', resolvedCompanyId),
+                  where('companyId', '==', entry.companyId),
                   where('employeeId', '==', entry.employeeId),
                   where('status', '==', 'approved'),
                   limit(10)
@@ -1163,7 +1393,7 @@ export const handler = async (event) => {
             lSnap.forEach(ld => {
               const lData = ld.data();
               const lComp = lData.companyId || 'default';
-              if (lComp === resolvedCompanyId && lData.from <= entry.dateStr && lData.to >= entry.dateStr) {
+              if (lComp === entry.companyId && lData.from <= entry.dateStr && lData.to >= entry.dateStr) {
                 isOnLeave = true;
               }
             });
@@ -1237,7 +1467,7 @@ export const handler = async (event) => {
 
           if (
             existingRecord &&
-            existingRecord.companyId === resolvedCompanyId &&
+            existingRecord.companyId === entry.companyId &&
             existingRecord.firstPunchIn === finalFirstPunch &&
             existingRecord.lastPunchOut === finalLastPunch &&
             existingRecord.checkIn === finalFirstPunch &&
@@ -1249,14 +1479,14 @@ export const handler = async (event) => {
 
           const attendanceRecord = sanitizeData({
             id: attendanceDocId,
-            companyId: resolvedCompanyId,
+            companyId: entry.companyId,
             employeeId: entry.employeeId,
             employeeCode: entry.employeeId,
             employeeName: employee?.name || existingRecord?.employeeName || 'Staff Member',
             department: employee?.department || existingRecord?.department || 'General',
             designation: employee?.designation || existingRecord?.designation || 'Staff',
-            branch: employee?.branch || existingRecord?.branch || resolvedDeviceBranch,
-            branchId: employee?.branchId || existingRecord?.branchId || resolvedDeviceBranchId,
+            branch: employee?.branch || existingRecord?.branch || entry.branch,
+            branchId: employee?.branchId || existingRecord?.branchId || entry.branchId,
             date: entry.dateStr,
             firstPunchIn: finalFirstPunch,
             lastPunchOut: finalLastPunch,

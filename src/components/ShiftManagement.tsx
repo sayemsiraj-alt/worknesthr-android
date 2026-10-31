@@ -38,6 +38,98 @@ export function ShiftManagement() {
   const [isConfirmingPastChange, setIsConfirmingPastChange] = useState<boolean>(false);
   const [isSavingAssignment, setIsSavingAssignment] = useState<boolean>(false);
 
+  // Department-Wise Shift Assignment states
+  const [showDeptAssignModal, setShowDeptAssignModal] = useState<boolean>(false);
+  const [deptAssignDepartment, setDeptAssignDepartment] = useState<string>('');
+  const [deptAssignShiftName, setDeptAssignShiftName] = useState<string>('');
+  const [deptAssignEffectiveFrom, setDeptAssignEffectiveFrom] = useState<string>(todayStr);
+  const [deptAssignEffectiveTo, setDeptAssignEffectiveTo] = useState<string>('');
+  const [deptAssignNote, setDeptAssignNote] = useState<string>('');
+  const [deptAssignError, setDeptAssignError] = useState<string>('');
+  const [isSavingDeptAssign, setIsSavingDeptAssign] = useState<boolean>(false);
+
+  const handleOpenDeptAssignModal = (preselectedDept?: string) => {
+    setDeptAssignError('');
+    const allDepts = Array.from(new Set(employees.map(e => e.department).filter(Boolean)));
+    const targetDept = preselectedDept || allDepts[0] || '';
+    setDeptAssignDepartment(targetDept);
+    setDeptAssignShiftName(shifts[0]?.name || '');
+    setDeptAssignEffectiveFrom(todayStr);
+    setDeptAssignEffectiveTo('');
+    setDeptAssignNote('');
+    setShowDeptAssignModal(true);
+  };
+
+  const handleSaveDeptShiftAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deptAssignDepartment || !deptAssignShiftName) {
+      setDeptAssignError('Please select both a Department and a Shift.');
+      return;
+    }
+    const targetEmployees = employees.filter(
+      e => e.department?.toLowerCase() === deptAssignDepartment.toLowerCase()
+    );
+    if (targetEmployees.length === 0) {
+      setDeptAssignError(`No employees found in department "${deptAssignDepartment}".`);
+      return;
+    }
+
+    setIsSavingDeptAssign(true);
+    setDeptAssignError('');
+    try {
+      for (const emp of targetEmployees) {
+        const history = getNormalizedEmployeeShiftHistory(emp);
+        let updatedHistory = history.map(h => {
+          if (!h.effectiveTo || h.effectiveTo >= deptAssignEffectiveFrom) {
+            const closedTo = offsetDateStr(deptAssignEffectiveFrom, -1);
+            return {
+              ...h,
+              effectiveTo: closedTo < h.effectiveFrom ? h.effectiveFrom : closedTo,
+            };
+          }
+          return h;
+        });
+
+        const newRecord: ShiftAssignmentRecord = {
+          id: `shift_${emp.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          employeeId: emp.employeeId || emp.id,
+          employeeName: emp.name,
+          shiftName: deptAssignShiftName.trim(),
+          effectiveFrom: deptAssignEffectiveFrom,
+          effectiveTo: deptAssignEffectiveTo.trim() ? deptAssignEffectiveTo.trim() : null,
+          note: deptAssignNote.trim() || `Department shift change (${deptAssignDepartment})`,
+        };
+
+        updatedHistory.push(newRecord);
+        updatedHistory = sortShiftHistoryAsc(updatedHistory);
+
+        const effectiveShiftToday = resolveEmployeeShiftNameForDate(
+          { ...emp, shiftHistory: updatedHistory },
+          todayStr
+        );
+
+        await updateEmployee(emp.id, {
+          shift: effectiveShiftToday || deptAssignShiftName.trim(),
+          shiftHistory: updatedHistory,
+        });
+      }
+
+      addNotification({
+        title: '🏢 Department Shift Assigned',
+        message: `Department "${deptAssignDepartment}" (${targetEmployees.length} staff): Shift updated to "${deptAssignShiftName}" effective from ${formatEffectiveDateDisplay(deptAssignEffectiveFrom)}.`,
+        read: false,
+        type: 'system',
+        targetPage: 'shift',
+      });
+
+      setShowDeptAssignModal(false);
+    } catch (err: any) {
+      setDeptAssignError(err?.message || 'Failed to assign shift to department.');
+    } finally {
+      setIsSavingDeptAssign(false);
+    }
+  };
+
   // Shift History Filters & Date Lookup Inspector
   const [historySearch, setHistorySearch] = useState<string>('');
   const [historyEmployeeFilter, setHistoryEmployeeFilter] = useState<string>('all');
@@ -843,6 +935,15 @@ export function ShiftManagement() {
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           <button
             type="button"
+            onClick={() => handleOpenDeptAssignModal()}
+            className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 flex items-center space-x-2 text-xs sm:text-sm font-semibold cursor-pointer shadow-md shadow-purple-500/20 active:scale-95 transition-all"
+            title="Change shift for an entire department in one click"
+          >
+            <span>🏢</span>
+            <span>Assign Shift by Department</span>
+          </button>
+          <button
+            type="button"
             onClick={() => handleOpenAssignModal()}
             className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 flex items-center space-x-2 text-xs sm:text-sm font-semibold cursor-pointer shadow-md shadow-emerald-500/20 active:scale-95 transition-all"
           >
@@ -1367,6 +1468,184 @@ export function ShiftManagement() {
           </table>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* DEPARTMENT-WISE SHIFT ASSIGNMENT MODAL                                      */}
+      {/* ========================================================================= */}
+      {showDeptAssignModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 max-h-[92vh] overflow-y-auto thin-scroll shadow-2xl border border-slate-200 animate-scale-in">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-50 border border-purple-200 text-purple-600 flex items-center justify-center text-xl shadow-xs">
+                  🏢
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Assign Shift by Department
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Update working shift for all active staff in a department simultaneously
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeptAssignModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {deptAssignError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center space-x-2">
+                <span>⚠️</span>
+                <span>{deptAssignError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDeptShiftAssignment} className="space-y-4">
+              {/* Select Department */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                  1. Select Department *
+                </label>
+                <select
+                  value={deptAssignDepartment}
+                  onChange={e => setDeptAssignDepartment(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  required
+                >
+                  <option value="">-- Choose Department --</option>
+                  {Array.from(new Set(employees.map(e => e.department).filter(Boolean))).map(d => {
+                    const count = employees.filter(e => e.department === d).length;
+                    return (
+                      <option key={d} value={d}>
+                        {d} ({count} Employees)
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Department Employees Preview */}
+              {(() => {
+                const deptStaff = employees.filter(
+                  e => e.department?.toLowerCase() === deptAssignDepartment.toLowerCase()
+                );
+                if (!deptAssignDepartment) return null;
+                return (
+                  <div className="p-3 bg-purple-50/60 border border-purple-200/80 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-purple-900">
+                        Affected Employees ({deptStaff.length})
+                      </span>
+                      <span className="text-[11px] text-purple-700 font-medium">
+                        Will be updated to the new shift
+                      </span>
+                    </div>
+                    {deptStaff.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No employees found in this department.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                        {deptStaff.map(emp => (
+                          <span
+                            key={emp.id}
+                            className="px-2 py-0.5 bg-white border border-purple-200 text-purple-900 rounded-lg text-[11px] font-medium"
+                          >
+                            {emp.name} ({emp.shift || 'No Shift'})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Select Shift to Assign */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                  2. Select New Shift to Assign *
+                </label>
+                <select
+                  value={deptAssignShiftName}
+                  onChange={e => setDeptAssignShiftName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  required
+                >
+                  <option value="">-- Choose Shift --</option>
+                  {shifts.map(s => (
+                    <option key={s.id} value={s.name}>
+                      {s.name} ({s.startTime} - {s.endTime}) {s.type === 'flexible' ? '[Flexible]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Effective Dates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                    3. Effective From *
+                  </label>
+                  <input
+                    type="date"
+                    value={deptAssignEffectiveFrom}
+                    onChange={e => setDeptAssignEffectiveFrom(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Starting date of new shift</p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                    Effective To <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={deptAssignEffectiveTo}
+                    onChange={e => setDeptAssignEffectiveTo(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Leave blank for ongoing</p>
+                </div>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Assignment Note / Reason
+                </label>
+                <input
+                  type="text"
+                  value={deptAssignNote}
+                  onChange={e => setDeptAssignNote(e.target.value)}
+                  placeholder="e.g. Factory seasonal rotation, Ramadan timing..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end space-x-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowDeptAssignModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingDeptAssign}
+                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingDeptAssign ? 'Applying to Department...' : '✓ Apply to Whole Department'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* DATE-WISE EMPLOYEE SHIFT ASSIGNMENT MODAL (REQUIREMENTS 4, 5, 9, 15)       */}

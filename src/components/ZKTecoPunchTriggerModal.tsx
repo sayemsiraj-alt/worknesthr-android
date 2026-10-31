@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { useTenant } from '../context/TenantContext';
 import { recordZKTecoPunchToFirestore } from '../lib/firestoreService';
 import { getBangladeshTodayStr, findShiftByNameOrId, isShiftOvertimeEnabled, resolveEmployeeScheduleForDate } from '../utils/attendanceScheduleEngine';
 import { IconFingerprint, IconCheckCircle } from './Icons';
@@ -11,6 +12,7 @@ type Props = {
 
 export function ZKTecoPunchTriggerModal({ isOpen, onClose }: Props) {
   const { employees, shifts, roster, devices, addNotification, getEmployeeBranch, getDeviceBranch } = useData();
+  const { currentCompanyId } = useTenant();
   const [selectedEmpId, setSelectedEmpId] = useState<string>(employees[0]?.employeeId || '101');
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [deviceSerial, setDeviceSerial] = useState('BIO-K40-MAIN-GATE');
@@ -77,6 +79,7 @@ export function ZKTecoPunchTriggerModal({ isOpen, onClose }: Props) {
 
     try {
       const res = await recordZKTecoPunchToFirestore({
+        companyId: emp?.companyId || currentCompanyId || 'default',
         employeeId: selectedEmpId,
         employeeName: emp ? emp.name : `Employee ${selectedEmpId}`,
         department: emp ? emp.department : 'General',
@@ -95,6 +98,7 @@ export function ZKTecoPunchTriggerModal({ isOpen, onClose }: Props) {
         latePolicyEnabled: sched ? sched.latePolicyEnabled : (matchedShift?.latePolicyEnabled !== false),
         isFlexible: matchedShift?.type === 'flexible',
         shiftName: sched?.shiftName && sched.shiftName !== 'Unassigned' ? sched.shiftName : (matchedShift ? matchedShift.name : 'Morning'),
+        skipMonthFilter: true,
       });
 
       setIsSubmitting(false);

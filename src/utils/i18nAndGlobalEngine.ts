@@ -389,11 +389,11 @@ export function buildDefaultCountryHolidays(countryCode: string, year: number, c
   const code = countryCode.toUpperCase();
   if (code === 'BD') {
     return [
-      { id: `hol_bd_${year}_01`, date: `${year}-02-21`, name: 'International Mother Language Day', localName: 'শহীদ দিবস ও আন্তর্জাতিক মাতৃভাষা দিবস', countryCode: 'BD', branchScope: 'ALL', type: 'public', isPaid: true, companyId },
-      { id: `hol_bd_${year}_02`, date: `${year}-03-26`, name: 'Independence & National Day', localName: 'স্বাধীনতা ও জাতীয় দিবস', countryCode: 'BD', branchScope: 'ALL', type: 'statutory', isPaid: true, companyId },
-      { id: `hol_bd_${year}_03`, date: `${year}-04-14`, name: 'Bengali New Year (Pohela Boishakh)', localName: 'পহেলা বৈশাখ', countryCode: 'BD', branchScope: 'ALL', type: 'festival', isPaid: true, companyId },
-      { id: `hol_bd_${year}_04`, date: `${year}-05-01`, name: 'International Workers Day (May Day)', localName: 'মে দিবস', countryCode: 'BD', branchScope: 'ALL', type: 'statutory', isPaid: true, companyId },
-      { id: `hol_bd_${year}_05`, date: `${year}-12-16`, name: 'Victory Day of Bangladesh', localName: 'বিজয় দিবস', countryCode: 'BD', branchScope: 'ALL', type: 'statutory', isPaid: true, companyId },
+      { id: `hol_bd_${year}_01`, date: `${year}-02-21`, name: 'International Mother Language Day', localName: 'International Mother Language Day', countryCode: 'BD', branchScope: 'ALL', type: 'public', isPaid: true, companyId },
+      { id: `hol_bd_${year}_02`, date: `${year}-03-26`, name: 'Independence & National Day', localName: 'Independence & National Day', countryCode: 'BD', branchScope: 'ALL', type: 'statutory', isPaid: true, companyId },
+      { id: `hol_bd_${year}_03`, date: `${year}-04-14`, name: 'Bengali New Year (Pohela Boishakh)', localName: 'Bengali New Year (Pohela Boishakh)', countryCode: 'BD', branchScope: 'ALL', type: 'festival', isPaid: true, companyId },
+      { id: `hol_bd_${year}_04`, date: `${year}-05-01`, name: 'International Workers Day (May Day)', localName: 'International Workers Day (May Day)', countryCode: 'BD', branchScope: 'ALL', type: 'statutory', isPaid: true, companyId },
+      { id: `hol_bd_${year}_05`, date: `${year}-12-16`, name: 'Victory Day of Bangladesh', localName: 'Victory Day of Bangladesh', countryCode: 'BD', branchScope: 'ALL', type: 'statutory', isPaid: true, companyId },
     ];
   }
   if (code === 'US') {
