@@ -11,6 +11,7 @@ import {
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, reconfigureFirebase } from '../lib/firestoreService';
 import { CustomerBillingSection } from './CustomerBillingSection';
+import { admsWebhookUrl, employeePortalUrl, SERVER_NOT_CONFIGURED_HINT } from '../lib/serverConfig';
 import { Avatar } from './Avatar';
 
 type SettingsTab =
@@ -468,7 +469,8 @@ export function AccountSettings() {
   const [devicePingStatus, setDevicePingStatus] = useState<'idle' | 'testing' | 'online' | 'offline'>('idle');
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
-  const webhookEndpoint = `${window.location.origin}/.netlify/functions/iclock`;
+  // Web origin on the web build; configured deployment origin inside the APK.
+  const webhookEndpoint = admsWebhookUrl();
 
   const [savingModule, setSavingModule] = useState<string | null>(null);
   const [savedSuccessModule, setSavedSuccessModule] = useState<string | null>(null);
@@ -643,7 +645,16 @@ export function AccountSettings() {
   };
 
   const handleCopyEmployeePortalLink = () => {
-    const cleanPortalUrl = `${window.location.origin}/?portal=employee`;
+    const cleanPortalUrl = employeePortalUrl();
+    if (!cleanPortalUrl) {
+      addNotification({
+        title: 'Server URL Not Configured',
+        message: SERVER_NOT_CONFIGURED_HINT,
+        read: false,
+        type: 'system',
+      });
+      return;
+    }
     navigator.clipboard.writeText(cleanPortalUrl);
     setCopiedEmployeePortalLink(true);
     setTimeout(() => setCopiedEmployeePortalLink(false), 2500);

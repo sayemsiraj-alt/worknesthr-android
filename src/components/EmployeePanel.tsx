@@ -11,6 +11,8 @@ import { ExpenseManagement } from './ExpenseManagement';
 import { OnboardingManagement } from './OnboardingManagement';
 import { EmployeeEngagement } from './EmployeeEngagement';
 import { formatTo12Hour, formatMessageDateTime, formatDateGroupHeader, getMessageDateKey } from '../utils/timeFormat';
+import { onAndroidBack } from '../utils/androidShell';
+import { isNativeAndroid } from '../utils/nativePrint';
 import {
   findShiftByNameOrId,
   isShiftOvertimeEnabled,
@@ -236,6 +238,31 @@ export function EmployeePanel() {
       setActiveTab('overview');
     }
   }, [isRemoteEmployee, activeTab]);
+
+  // Android system Back button: close the employee drawer / feature modal first,
+  // then return to the overview tab. Returning false lets the shell exit the app.
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    return onAndroidBack(() => {
+      if (isAllFeaturesModalOpen) {
+        setIsAllFeaturesModalOpen(false);
+        return true;
+      }
+      if (isMobileSidebarOpen) {
+        setIsMobileSidebarOpen(false);
+        return true;
+      }
+      if (isMoreFeaturesDropdownOpen) {
+        setIsMoreFeaturesDropdownOpen(false);
+        return true;
+      }
+      if (activeTab !== 'overview') {
+        handleSelectTab('overview');
+        return true;
+      }
+      return false;
+    });
+  }, [activeTab, isAllFeaturesModalOpen, isMobileSidebarOpen, isMoreFeaturesDropdownOpen]);
 
   // Real-time Firestore Attendance records for this employee
   const [firestoreAttendance, setFirestoreAttendance] = useState<any[]>([]);
@@ -1915,7 +1942,7 @@ export function EmployeePanel() {
   }, [companyHolidays, todayStr]);
 
   return (
-    <div className="min-h-screen bg-mesh-light flex font-sans">
+    <div className="min-h-screen bg-mesh-light flex font-sans pt-[env(safe-area-inset-top)]">
       {/* ========================================================================= */}
       {/* MOBILE DRAWER BACKDROP                                                    */}
       {/* ========================================================================= */}

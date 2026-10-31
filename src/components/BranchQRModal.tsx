@@ -69,7 +69,7 @@ export function BranchQRModal({ branch, companyName, onClose }: BranchQRModalPro
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in print:p-0 print:bg-white print:static">
       <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 text-slate-800 animate-slide-down print:shadow-none print:border-none print:max-w-none print:w-full print:p-0">
-        
+
         {/* Modal Header (Hidden on Print) */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 print:hidden">
           <div className="flex items-center space-x-2.5">

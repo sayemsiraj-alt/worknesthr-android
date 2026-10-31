@@ -33,6 +33,8 @@ import { EmployeeEngagement } from './components/EmployeeEngagement';
 import { HRAnalyticsDashboard } from './components/HRAnalyticsDashboard';
 import { EnterpriseSecurityCenter } from './components/EnterpriseSecurityCenter';
 import { IconDashboard, IconAttendance, IconUsers, IconWallet, IconMenu } from './components/Icons';
+import { onAndroidBack } from './utils/androidShell';
+import { isNativeAndroid } from './utils/nativePrint';
 
 export type Page =
   | 'dashboard'
@@ -90,6 +92,26 @@ function AppContent() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [sidebarOpen]);
+
+  // Android system Back button: close the mobile navigation drawer first, then
+  // return to the dashboard. Returning false lets the native shell exit the app
+  // when the user is already on the root screen.
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    return onAndroidBack(() => {
+      if (sidebarOpen && window.innerWidth < 1024) {
+        setSidebarOpen(false);
+        return true;
+      }
+      if (currentPage !== 'dashboard') {
+        setCurrentPage('dashboard');
+        if (mainScrollRef.current) mainScrollRef.current.scrollTop = 0;
+        return true;
+      }
+      return false;
+    });
+  }, [sidebarOpen, currentPage]);
+
 
   const isPageAuthorized = (page: Page): boolean => {
     if (!currentUser) return false;
@@ -256,7 +278,7 @@ function AppContent() {
   };
 
   return (
-    <div className="h-screen h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-mesh-light flex flex-row text-slate-800 antialiased selection:bg-indigo-500 selection:text-white relative">
+    <div className="h-screen h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-mesh-light flex flex-row text-slate-800 antialiased selection:bg-indigo-500 selection:text-white relative pt-[env(safe-area-inset-top)]">
       {/* Exclusive subtle ambient glow layer */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden print:hidden">
         <div className="absolute -top-40 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl"></div>
